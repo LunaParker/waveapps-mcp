@@ -3,8 +3,8 @@ import { z, type ZodRawShape } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { WaveClient } from '../client/index.js';
 
-export const BUSINESS_UUID = 'c2cb3afe-5a24-41b2-add7-d1c6982d75a9';
-export const BUSINESS_GLOBAL_ID = 'QnVzaW5lc3M6YzJjYjNhZmUtNWEyNC00MWIyLWFkZDctZDFjNjk4MmQ3NWE5';
+export const BUSINESS_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+export const BUSINESS_GLOBAL_ID = 'QnVzaW5lc3M6YWFhYWFhYWEtYmJiYi1jY2NjLWRkZGQtZWVlZWVlZWVlZWVl';
 
 type ToolHandler = (args: Record<string, unknown>) => Promise<unknown> | unknown;
 

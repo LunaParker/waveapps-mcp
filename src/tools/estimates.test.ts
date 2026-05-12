@@ -67,7 +67,7 @@ describe('registerEstimateTools', () => {
     const input = mock.gql.execute.mock.calls[0]![0].variables.input;
     expect(input.businessId).toBe(BUSINESS_GLOBAL_ID);
     expect(input.customerId).toBe(
-      'QnVzaW5lc3M6YzJjYjNhZmUtNWEyNC00MWIyLWFkZDctZDFjNjk4MmQ3NWE5O0N1c3RvbWVyOjEwMjUzMjgwOA==',
+      'QnVzaW5lc3M6YWFhYWFhYWEtYmJiYi1jY2NjLWRkZGQtZWVlZWVlZWVlZWVlO0N1c3RvbWVyOjEwMjUzMjgwOA==',
     );
     expect(input.items).toHaveLength(1);
     const productGlobalId = Buffer.from(`Business:${BUSINESS_UUID};Product:${ITEM.productId}`, 'utf8').toString('base64');

@@ -28,7 +28,7 @@ describe('runWhoami', () => {
     writeCredentials({
       authToken: 'EXAMPLE_FAKE_WAVE_TOKEN_30CHRSAB',
       csrfToken: 'EXAMPLE_FAKE_CSRF_TOKEN_32CHARSEEXX',
-      businessId: 'c2cb3afe-5a24-41b2-add7-d1c6982d75a9',
+      businessId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       email: undefined,
       password: undefined,
       totpSecret: undefined,
@@ -38,7 +38,7 @@ describe('runWhoami', () => {
     const out = log.mock.calls.flat().join('\n');
     expect(out).toContain('EXAM…AB');
     expect(out).not.toContain('EXAMPLE_FAKE_WAVE_TOKEN_30CHRSAB');
-    expect(out).toContain('c2cb3afe-5a24-41b2-add7-d1c6982d75a9');
+    expect(out).toContain('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
     expect(out).toMatch(/csrfToken: +EXAM/);
   });
 

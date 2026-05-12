@@ -42,7 +42,7 @@ describe('writeCredentials / readCredentials', () => {
     const stored = writeCredentials({
       authToken: 'TOKEN',
       csrfToken: 'CSRF',
-      businessId: 'c2cb3afe-5a24-41b2-add7-d1c6982d75a9',
+      businessId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       email: undefined,
       password: undefined,
       totpSecret: undefined,
@@ -69,7 +69,7 @@ describe('writeCredentials / readCredentials', () => {
   it('reads old credential files (pre-new-fields) without errors', () => {
     writeFileSync(
       credentialsPath(),
-      JSON.stringify({ authToken: 'X', csrfToken: 'Y', businessId: 'c2cb3afe-5a24-41b2-add7-d1c6982d75a9' }),
+      JSON.stringify({ authToken: 'X', csrfToken: 'Y', businessId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }),
       'utf8',
     );
     expect(readCredentials()).toMatchObject({

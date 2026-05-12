@@ -49,7 +49,7 @@ function seed(): void {
   writeCredentials({
     authToken: 'EXISTING_TOKEN',
     csrfToken: 'EXISTING_CSRF',
-    businessId: 'c2cb3afe-5a24-41b2-add7-d1c6982d75a9',
+    businessId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     email: undefined,
     password: undefined,
     totpSecret: undefined,

@@ -1,5 +1,10 @@
 # waveapps-mcp
 
+[![Test](https://github.com/LunaParker/waveapps-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/LunaParker/waveapps-mcp/actions/workflows/test.yml)
+[![Build](https://github.com/LunaParker/waveapps-mcp/actions/workflows/build.yml/badge.svg)](https://github.com/LunaParker/waveapps-mcp/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Node 20+](https://img.shields.io/badge/node-%3E%3D20.18-brightgreen.svg)](https://nodejs.org)
+
 ## Purpose
 
 This is an add-on that lets you ask **Claude** (or any other AI assistant that supports MCP) to do your **Wave Accounting** bookkeeping for you. Instead of clicking through the Wave website to draft an invoice, you tell Claude something like:
@@ -46,7 +51,7 @@ You'll need:
 In a terminal, somewhere you keep your projects:
 
 ```bash
-git clone https://github.com/your-username/waveapps-mcp.git
+git clone https://github.com/LunaParker/waveapps-mcp.git
 cd waveapps-mcp
 npm install
 npm run build
@@ -84,7 +89,7 @@ Here's how to get them:
 4. In the left sidebar, find **Cookies** → `https://next.waveapps.com`.
 5. Find `waveapps` in the list and copy its **Value** column. Paste it when the command asks.
 6. Repeat for `identity-csrftoken`.
-7. For the business UUID, look at the URL in your browser — after sign-in it looks like `next.waveapps.com/c2cb3afe-5a24-41b2-add7-d1c6982d75a9/dashboard/`. The long string in the middle is the UUID. Copy it. (Or skip with Enter and tell Claude which workspace each time.)
+7. For the business UUID, look at the URL in your browser — after sign-in it looks like `next.waveapps.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/dashboard/`. The long string in the middle is the UUID. Copy it. (Or skip with Enter and tell Claude which workspace each time.)
 
 The values are saved to `~/.config/waveapps-mcp/credentials.json` with restrictive file permissions (`0600` — only your user can read it).
 

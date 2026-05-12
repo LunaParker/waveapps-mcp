@@ -8,8 +8,8 @@ import {
   toGlobalId,
 } from './ids.js';
 
-const BUSINESS_UUID = 'c2cb3afe-5a24-41b2-add7-d1c6982d75a9';
-const BUSINESS_GLOBAL_ID = 'QnVzaW5lc3M6YzJjYjNhZmUtNWEyNC00MWIyLWFkZDctZDFjNjk4MmQ3NWE5';
+const BUSINESS_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const BUSINESS_GLOBAL_ID = 'QnVzaW5lc3M6YWFhYWFhYWEtYmJiYi1jY2NjLWRkZGQtZWVlZWVlZWVlZWVl';
 
 describe('toGlobalId / fromGlobalId', () => {
   it('encodes Business:UUID as base64', () => {
@@ -38,7 +38,7 @@ describe('toCompositeGlobalId / fromCompositeGlobalId', () => {
   it('produces the exact Customer composite ID Wave emits', () => {
     // Captured from /customers/102532808/view during investigation.
     expect(toCompositeGlobalId(BUSINESS_UUID, 'Customer', 102532808)).toBe(
-      'QnVzaW5lc3M6YzJjYjNhZmUtNWEyNC00MWIyLWFkZDctZDFjNjk4MmQ3NWE5O0N1c3RvbWVyOjEwMjUzMjgwOA==',
+      'QnVzaW5lc3M6YWFhYWFhYWEtYmJiYi1jY2NjLWRkZGQtZWVlZWVlZWVlZWVlO0N1c3RvbWVyOjEwMjUzMjgwOA==',
     );
   });
 
@@ -76,13 +76,13 @@ describe('isUuid / assertUuid', () => {
   });
 
   it('accepts upper-case hex', () => {
-    expect(isUuid('C2CB3AFE-5A24-41B2-ADD7-D1C6982D75A9')).toBe(true);
+    expect(isUuid('AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE')).toBe(true);
   });
 
   it.each([
-    ['too short', 'c2cb3afe'],
-    ['no hyphens', 'c2cb3afe5a2441b2add7d1c6982d75a9'],
-    ['non-hex', 'c2cb3afe-5a24-41b2-add7-d1c6982d75az'],
+    ['too short', 'aaaaaaaa'],
+    ['no hyphens', 'aaaaaaaabbbbccccddddeeeeeeeeeeee'],
+    ['non-hex', 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeezz'],
     ['empty', ''],
   ])('rejects %s', (_label, value) => {
     expect(isUuid(value)).toBe(false);

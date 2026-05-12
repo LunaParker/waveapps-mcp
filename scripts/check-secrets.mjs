@@ -55,7 +55,9 @@ const CONTEXTUAL_RULES = [
     extraOk: (value) =>
       // Short test fixtures we know about
       ['hunter2', 'pw', 'invalidated', 'X', 'Y', 'T', 'TOKEN', 'CSRF'].includes(value) ||
-      value.startsWith('EXISTING_'),
+      value.startsWith('EXISTING_') ||
+      // RFC 6238 canonical TOTP test vector — public, must stay valid base32.
+      value === 'JBSWY3DPEHPK3PXP',
   },
   {
     pattern: /Bearer\s+([A-Za-z0-9_.+/=-]{20,})/g,

@@ -42,7 +42,7 @@ export async function runPaste(deps: RunPasteDeps = {}): Promise<number> {
 
   const bizRaw = sanitise(
     await ask(
-      '  Business UUID (optional — copy from the URL after login, e.g. c2cb3afe-...): ',
+      '  Business UUID (optional — copy from the URL after login, e.g. aaaaaaaa-bbbb-cccc-...): ',
     ),
   );
   let businessId: string | undefined;

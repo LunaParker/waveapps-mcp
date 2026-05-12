@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { refreshSession, type DriverInput, type DriverResult } from './refresh-session.js';
 
-const BUSINESS_UUID = 'c2cb3afe-5a24-41b2-add7-d1c6982d75a9';
+const BUSINESS_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 const DASHBOARD_URL = `https://next.waveapps.com/${BUSINESS_UUID}/dashboard/`;
 
 function stubDriver(result: DriverResult): (i: DriverInput) => Promise<DriverResult> {

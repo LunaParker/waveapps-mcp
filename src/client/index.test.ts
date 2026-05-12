@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WaveClient } from './index.js';
 
 const TOKEN_KEYS = ['WAVE_AUTH_TOKEN', 'WAVE_CSRF_TOKEN', 'WAVE_BUSINESS_ID', 'WAVE_MCP_CONFIG_DIR'];
-const BUSINESS_UUID = 'c2cb3afe-5a24-41b2-add7-d1c6982d75a9';
-const BUSINESS_GLOBAL_ID = 'QnVzaW5lc3M6YzJjYjNhZmUtNWEyNC00MWIyLWFkZDctZDFjNjk4MmQ3NWE5';
+const BUSINESS_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const BUSINESS_GLOBAL_ID = 'QnVzaW5lc3M6YWFhYWFhYWEtYmJiYi1jY2NjLWRkZGQtZWVlZWVlZWVlZWVl';
 
 describe('WaveClient', () => {
   const prior: Record<string, string | undefined> = {};

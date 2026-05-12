@@ -6,6 +6,27 @@
   "license": "MIT",
   "author": "Luna Parker <100833422+LunaParker@users.noreply.github.com>",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LunaParker/waveapps-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LunaParker/waveapps-mcp/issues"
+  },
+  "homepage": "https://github.com/LunaParker/waveapps-mcp#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "wave",
+    "waveapps",
+    "wave-accounting",
+    "accounting",
+    "invoicing",
+    "claude",
+    "anthropic",
+    "ai-tools",
+    "typescript"
+  ],
   "bin": {
     "waveapps-mcp": "./dist/server.js"
   },

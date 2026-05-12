@@ -109,7 +109,7 @@ describe('registerCustomerTools', () => {
     const call = mock.gql.execute.mock.calls[0]![0];
     expect(call.query).toBe(DELETE_CUSTOMER_MUTATION);
     expect(call.variables.input.id).toBe(
-      'QnVzaW5lc3M6YzJjYjNhZmUtNWEyNC00MWIyLWFkZDctZDFjNjk4MmQ3NWE5O0N1c3RvbWVyOjEwMjUzMjgwOA==',
+      'QnVzaW5lc3M6YWFhYWFhYWEtYmJiYi1jY2NjLWRkZGQtZWVlZWVlZWVlZWVlO0N1c3RvbWVyOjEwMjUzMjgwOA==',
     );
   });
 

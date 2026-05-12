@@ -1,9 +1,9 @@
 // Wave's GraphQL uses two Relay-ID shapes:
 //   1. Top-level entities (Business, User) — `base64({Typename}:{UUID})`
-//      e.g. `Business:c2cb3afe-…` → QnVzaW5lc3M6YzJjYjNhZmUt…
+//      e.g. `Business:aaaaaaaa-…` → QnVzaW5lc3M6YWFhYWFhYWEt…
 //   2. Sub-resources of a business (Customer, Product, Estimate, …) — composite:
 //      `base64(Business:{businessUuid};{Typename}:{internalIntegerId})`
-//      e.g. `Business:c2cb3afe-…;Customer:102532808`
+//      e.g. `Business:aaaaaaaa-…;Customer:102532808`
 
 export function toGlobalId(typename: string, uuid: string): string {
   return Buffer.from(`${typename}:${uuid}`, 'utf8').toString('base64');

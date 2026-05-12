@@ -10,7 +10,7 @@ import {
   resolveBrowserLaunchTarget,
 } from './browser.js';
 
-const BUSINESS_UUID = 'c2cb3afe-5a24-41b2-add7-d1c6982d75a9';
+const BUSINESS_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 
 describe('resolveBrowserLaunchTarget', () => {
   const ENV = 'WAVE_MCP_BROWSER_PATH';

@@ -23,10 +23,10 @@ describe('registerBusinessTools', () => {
   it('wave_get_business GETs /businesses/{uuid}/', async () => {
     const stub = createStubServer();
     const mock = createMockClient();
-    mock.rest.get.mockResolvedValueOnce({ id: 'b', name: 'Shy Owl Studios' });
+    mock.rest.get.mockResolvedValueOnce({ id: 'b', name: 'Acme Co.' });
     registerBusinessTools(stub.server as never, mock.client);
     const out = (await stub.parsed('wave_get_business', {})) as { business: { name: string } };
     expect(mock.rest.get).toHaveBeenCalledWith(`/businesses/${BUSINESS_UUID}/`);
-    expect(out.business.name).toBe('Shy Owl Studios');
+    expect(out.business.name).toBe('Acme Co.');
   });
 });
