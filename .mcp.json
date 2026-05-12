@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "brave-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp-for-brave@latest",
+        "--isolated"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,47 @@
+# ─── Build output / dependencies ─────────────────────────────────────────────
+node_modules/
+dist/
+*.tsbuildinfo
+
+# ─── Test + coverage artefacts ───────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ─── Secrets / environment ───────────────────────────────────────────────────
+# `.env.example` is intentionally tracked (template). Real env files are not.
+.env
+.env.*
+!.env.example
+
+# Credentials should live in `~/.config/waveapps-mcp/credentials.json`, NOT here —
+# but defensively block anything resembling a credential file from being added.
+credentials.json
+**/credentials.json
+*.pem
+*.key
+auth.json
+secrets.json
+
+# ─── Editor / IDE state ──────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── Claude Code project-local state ─────────────────────────────────────────
+.claude/
+
+# ─── npm / pnpm / yarn debug logs ────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── OS junk ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Misc local-only ─────────────────────────────────────────────────────────
+NOTES.md
+*.local
