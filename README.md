@@ -188,7 +188,7 @@ You can use, modify, and redistribute this freely. There's no warranty; if it br
 
 Brief pointers if you want to hack on this:
 
-- Source layout, API map, and captured GraphQL operations: see [docs/api-map.md](./docs/api-map.md) and [docs/captured-queries.md](./docs/captured-queries.md)
+- Source layout, API map, and captured GraphQL operations live in `docs/` locally — gitignored on purpose so the reverse-engineering reference doesn't get committed to a public mirror.
 - Run the test suite: `npm test` (or `npm run test:coverage` for an HTML coverage report in `coverage/`)
 - Smoke-test against a live Wave account: `WAVE_AUTH_TOKEN=... npm run smoke`
 - An experimental browser-driven login flow is available via `npx waveapps-mcp login` — it uses puppeteer-core + the stealth plugin to try to get past Google's OAuth check. Often blocked; the manual `paste` flow above is more reliable.

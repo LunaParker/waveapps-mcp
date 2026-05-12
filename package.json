@@ -4,7 +4,7 @@
   "description": "Model Context Protocol server for Wave (waveapps.com) — drives invoices, customers, estimates, bills, and receipts via the internal Wave API.",
   "type": "module",
   "license": "MIT",
-  "author": "Luna Parker <lunaparker33@gmail.com>",
+  "author": "Luna Parker <100833422+LunaParker@users.noreply.github.com>",
   "private": true,
   "bin": {
     "waveapps-mcp": "./dist/server.js"
@@ -27,7 +27,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepare": "node scripts/install-git-hooks.mjs",
+    "check-secrets": "node scripts/check-secrets.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.0",

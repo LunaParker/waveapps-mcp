@@ -1,0 +1,67 @@
+name: Build
+
+# Pipeline 2 of 2 — compile TypeScript → dist/ and upload it as a workflow artifact
+# you can download for distribution. Triggers only when the Test pipeline succeeds
+# on `main` (so PR builds don't produce artifacts and broken main never publishes).
+# Can also be invoked manually via the Actions tab.
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compile + upload dist
+    runs-on: ubuntu-latest
+
+    # When invoked via `workflow_run`, we only run if the upstream Test workflow passed.
+    # `workflow_dispatch` bypasses this guard so you can always run a manual build.
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event.workflow_run.conclusion == 'success'
+      }}
+
+    steps:
+      - name: Checkout
+        # For workflow_run triggers, default checkout pulls the workflow file commit,
+        # not the head of the triggering run. Pin to the SHA that the Test workflow ran on.
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify entry point exists
+        run: |
+          test -f dist/server.js \
+            && echo "dist/server.js OK ($(stat -c%s dist/server.js 2>/dev/null || stat -f%z dist/server.js) bytes)" \
+            || (echo "MISSING dist/server.js after build" && exit 1)
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ github.event.workflow_run.head_sha || github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
