@@ -19,7 +19,7 @@ export function runWhoami(deps: RunWhoamiDeps = {}): number {
   log(`  businessId: ${creds.businessId ?? '(none — pass to each tool)'}`);
   log(`  email:      ${creds.email ?? '(none)'}`);
   log(`  password:   ${creds.password ? '(stored — auto-refresh enabled)' : '(none — manual refresh only)'}`);
-  log(`  totpSecret: ${creds.totpSecret ? `(stored, ${creds.totpSecret.length} chars — 2FA bypass enabled ⚠)` : '(none)'}`);
+  log(`  totpSecret: ${creds.totpSecret ? `(stored, ${creds.totpSecret.length} chars — 2FA bypass enabled ⚠️)` : '(none)'}`);
   log(`  updatedAt:  ${creds.updatedAt || '(unknown)'} (~${ageHuman} ago)`);
   return 0;
 }

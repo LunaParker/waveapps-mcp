@@ -25,7 +25,7 @@ const INNER_WIDTH = BANNER_WIDTH - 6;
 
 const BANNER_LINES: ReadonlyArray<string> = [
   `╔${HR}╗`,
-  centred('⚠  WARNING — THIS IS INSECURE  ⚠'),
+  centred('⚠️  WARNING — THIS IS INSECURE  ⚠️'),
   `║${' '.repeat(BANNER_WIDTH - 2)}║`,
   wrap('This command stores your Wave password in plaintext at'),
   wrap('~/.config/waveapps-mcp/credentials.json (mode 0600).'),
@@ -58,11 +58,16 @@ function centred(text: string): string {
 }
 
 /**
- * The ⚠ emoji renders as ~2 terminal columns despite being one code point. Treat the
- * common emoji we use as double-width so the banner stays aligned.
+ * Width of `text` in terminal columns. We use ⚠️ (emoji presentation, U+26A0 U+FE0F)
+ * which reliably renders as 2 columns. The variation selector itself is invisible — count
+ * it as zero so emoji-modified glyphs aren't over-counted.
  */
 function visualWidth(text: string): number {
-  return [...text].reduce((acc, ch) => acc + (ch === '⚠' ? 2 : 1), 0);
+  return [...text].reduce((acc, ch) => {
+    if (ch === '⚠') return acc + 2;
+    if (ch === '️') return acc + 0; // variation selector-16, invisible presentation hint
+    return acc + 1;
+  }, 0);
 }
 
 const CONFIRM_PROMPT = `\nType "y" to confirm you've read the warning above and want to proceed (anything else aborts): `;
@@ -116,7 +121,7 @@ export async function runSavePassword(
     let totpSecret: string | undefined;
     if (twoFa === 'y' || twoFa === 'yes') {
       log('');
-      log('  ⚠  Storing the TOTP secret defeats 2FA. Continue only if intentional.');
+      log('  ⚠️  Storing the TOTP secret defeats 2FA. Continue only if intentional.');
       const secretRaw = sanitise(await io.askSecret('  TOTP base32 secret (input hidden): '));
       if (!secretRaw) {
         log('  No secret provided — skipping. 2FA refresh will fail on the next rotation.');

@@ -60,18 +60,43 @@ const silent = { log: () => undefined, error: () => undefined };
 
 describe('runSavePassword', () => {
   describe('warning banner + confirmation', () => {
-    it('prints a boxed warning that mentions insecurity, 2FA, and includes ⚠ characters', async () => {
+    it('prints a boxed warning that mentions insecurity, 2FA, and includes ⚠️ characters', async () => {
       seed();
       const log = vi.fn();
       const io = scriptedIo(['n'], []); // 'n' aborts at the confirmation prompt
       await runSavePassword({ io, console: { log, error: () => undefined } });
       const banner = log.mock.calls.flat().join('\n');
-      expect(banner).toContain('⚠');
+      expect(banner).toContain('⚠️');
       expect(banner).toMatch(/WARNING — THIS IS INSECURE/);
       expect(banner).toContain('╔');
       expect(banner).toContain('╚');
       expect(banner).toMatch(/plaintext/i);
       expect(banner).toMatch(/2FA/);
+    });
+
+    it('renders every banner line at the same visual width as the top border', async () => {
+      seed();
+      const log = vi.fn();
+      const io = scriptedIo(['n'], []);
+      await runSavePassword({ io, console: { log, error: () => undefined } });
+      // The banner is a contiguous block of lines that start with one of the box-drawing
+      // characters. Compare each one's visual width to the top border's.
+      const bannerLines = log.mock.calls
+        .flat()
+        .filter((s): s is string => typeof s === 'string')
+        .filter((s) => /^[║╔╚]/.test(s));
+      expect(bannerLines.length).toBeGreaterThan(5);
+      const visualWidth = (text: string): number =>
+        [...text].reduce((acc, ch) => {
+          if (ch === '⚠') return acc + 2;
+          if (ch === '️') return acc + 0;
+          return acc + 1;
+        }, 0);
+      const top = bannerLines[0]!;
+      const topWidth = visualWidth(top);
+      for (const line of bannerLines) {
+        expect(visualWidth(line)).toBe(topWidth);
+      }
     });
 
     it('aborts with DECLINED when the user does not type y', async () => {
