@@ -30,7 +30,12 @@ const InvoiceItemInput = z.object({
     .describe('Integer income account ID. From an existing invoice (`items[].product.income_account.id`).'),
   quantity: z.number().default(1),
   price: z.string().regex(/^\d+(\.\d+)?$/).describe('Decimal as a string, e.g. "150.00".'),
-  taxes: z.array(z.unknown()).default([]),
+  taxes: z
+    .array(z.number().int().positive())
+    .default([])
+    .describe(
+      "Integer Wave sales-tax IDs to apply to this line (e.g. `[1897235638]` for HST 13%). Discover via an existing invoice's `items[].taxes[].sales_tax.id`. The MCP wraps each as `{ sales_tax: { id } }` before sending to Wave.",
+    ),
 });
 
 const CURRENCIES: Record<string, { symbol: string; name: string }> = {
@@ -97,7 +102,10 @@ function buildInvoiceBody(args: {
         name: it.name,
       },
       quantity: it.quantity,
-      taxes: it.taxes,
+      // Wave's REST API rejects bare integers here with
+      //   "Invalid data. Expected a dictionary, but got int."
+      // The required shape is { sales_tax: { id: <int> } } per line-tax entry.
+      taxes: it.taxes.map((id) => ({ sales_tax: { id } })),
     })),
     memo: args.memo,
     po_so_number: args.poSoNumber,

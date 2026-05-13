@@ -131,6 +131,19 @@ describe('registerInvoiceTools', () => {
       expect(body['due_date']).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
 
+    it('wraps integer tax IDs as { sales_tax: { id } } per Wave REST', async () => {
+      const stub = createStubServer();
+      const mock = createMockClient();
+      mock.rest.post.mockResolvedValueOnce({ id: 'x' });
+      registerInvoiceTools(stub.server as never, mock.client);
+      await stub.invoke('wave_create_invoice', {
+        customerId: 1,
+        items: [{ ...ITEM, taxes: [1897235638] }],
+      });
+      const items = mock.rest.post.mock.calls[0]![1]['items'] as ReadonlyArray<Record<string, unknown>>;
+      expect(items[0]!['taxes']).toEqual([{ sales_tax: { id: 1897235638 } }]);
+    });
+
     it('defaults dueDate to 15 days after invoiceDate', async () => {
       const stub = createStubServer();
       const mock = createMockClient();
