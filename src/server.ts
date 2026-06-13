@@ -23,13 +23,13 @@ async function main(): Promise<void> {
     process.exit(cli.exitCode);
   }
   const transport = (process.env['WAVE_MCP_TRANSPORT'] ?? 'stdio').toLowerCase();
-  const server = buildServer();
   switch (transport) {
     case 'stdio':
-      await startStdio(server);
+      await startStdio(buildServer());
       return;
     case 'http':
-      await startHttp(server);
+      // startHttp builds a server per session, so it takes the factory itself.
+      await startHttp(buildServer);
       return;
     default:
       throw new Error(`Unknown WAVE_MCP_TRANSPORT="${transport}" (expected "stdio" or "http")`);
