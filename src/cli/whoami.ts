@@ -1,11 +1,14 @@
 import { credentialsAgeSeconds, credentialsPath, readCredentials } from '../auth/credentials.js';
+import { secretStore, type SecretName, type SecretStore } from '../auth/secrets.js';
 
 export interface RunWhoamiDeps {
   console?: Pick<Console, 'log'>;
+  store?: SecretStore;
 }
 
 export function runWhoami(deps: RunWhoamiDeps = {}): number {
   const log = (deps.console ?? console).log;
+  const store = deps.store ?? secretStore();
   const creds = readCredentials();
   if (!creds) {
     log(`[waveapps-mcp] No credentials at ${credentialsPath()} — run \`npx waveapps-mcp login\`.`);
@@ -18,10 +21,20 @@ export function runWhoami(deps: RunWhoamiDeps = {}): number {
   log(`  csrfToken:  ${creds.csrfToken ? maskToken(creds.csrfToken) : '(none — mutations will fail)'}`);
   log(`  businessId: ${creds.businessId ?? '(none — pass to each tool)'}`);
   log(`  email:      ${creds.email ?? '(none)'}`);
-  log(`  password:   ${creds.password ? '(stored — auto-refresh enabled)' : '(none — manual refresh only)'}`);
-  log(`  totpSecret: ${creds.totpSecret ? `(stored, ${creds.totpSecret.length} chars — 2FA bypass enabled ⚠️)` : '(none)'}`);
+  const password = describeSecret(store, 'password');
+  const totpSecret = describeSecret(store, 'totp-secret');
+  log(`  password:   ${password === 'stored' ? '(in OS credential store — auto sign-in enabled)' : password === 'missing' ? '(none — run `login` when the session expires)' : password}`);
+  log(`  totpSecret: ${totpSecret === 'stored' ? '(in OS credential store — 2FA bypass enabled ⚠️)' : totpSecret === 'missing' ? '(none)' : totpSecret}`);
   log(`  updatedAt:  ${creds.updatedAt || '(unknown)'} (~${ageHuman} ago)`);
   return 0;
+}
+
+function describeSecret(store: SecretStore, name: SecretName): 'stored' | 'missing' | string {
+  try {
+    return store.get(name) ? 'stored' : 'missing';
+  } catch (err) {
+    return `(could not read the OS credential store: ${(err as Error).message})`;
+  }
 }
 
 function maskToken(token: string): string {

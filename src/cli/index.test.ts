@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { secretStore } from '../auth/secrets.js';
 import { dispatchCli } from './index.js';
 
 let tmp: string;
@@ -38,6 +39,22 @@ describe('dispatchCli', () => {
     const result = await dispatchCli(['whoami'], { log, error: vi.fn() });
     expect(result.handled).toBe(true);
     expect(result.exitCode).toBe(1); // no creds in tmp
+  });
+
+  it('routes refresh (which asks for save-password with nothing on file)', async () => {
+    const error = vi.fn();
+    const result = await dispatchCli(['refresh', '--headed'], { log: vi.fn(), error });
+    expect(result).toEqual({ handled: true, exitCode: 1 });
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('save-password'));
+  });
+
+  it('moves legacy plaintext secrets into the credential store before running a command', async () => {
+    writeFileSync(join(tmp, 'credentials.json'), JSON.stringify({ authToken: 'X', password: 'pw', totpSecret: 'JBSWY3DPEHPK3PXP' }), 'utf8');
+    const log = vi.fn();
+    await dispatchCli(['whoami'], { log, error: vi.fn() });
+    expect(secretStore().get('password')).toBe('pw');
+    expect(readFileSync(join(tmp, 'credentials.json'), 'utf8')).not.toContain('pw"');
+    expect(log.mock.calls.flat().join('\n')).toMatch(/password: +\(in OS credential store/);
   });
 
   it.each(['help', '--help', '-h'])('routes "%s" to the help screen', async (flag) => {
