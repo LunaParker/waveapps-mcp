@@ -7,10 +7,12 @@ import {
   credentialsAgeSeconds,
   credentialsPath,
   deleteCredentials,
+  migrateLegacySecrets,
   patchCredentials,
   readCredentials,
   writeCredentials,
 } from './credentials.js';
+import { memorySecretStore } from './secrets.js';
 
 let tmp: string;
 const ENV_KEY = 'WAVE_MCP_CONFIG_DIR';
@@ -44,26 +46,26 @@ describe('writeCredentials / readCredentials', () => {
       csrfToken: 'CSRF',
       businessId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       email: undefined,
-      password: undefined,
-      totpSecret: undefined,
     });
     expect(stored.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(readCredentials()).toEqual(stored);
   });
 
-  it('round-trips email + password + totpSecret', () => {
+  it('round-trips email', () => {
     writeCredentials({
       authToken: 'T',
       csrfToken: undefined,
       businessId: undefined,
       email: 'me@example.com',
-      password: 'hunter2',
-      totpSecret: 'JBSWY3DPEE',
     });
-    const out = readCredentials();
-    expect(out?.email).toBe('me@example.com');
-    expect(out?.password).toBe('hunter2');
-    expect(out?.totpSecret).toBe('JBSWY3DPEE');
+    expect(readCredentials()?.email).toBe('me@example.com');
+  });
+
+  it('never surfaces legacy plaintext secrets through readCredentials', () => {
+    writeFileSync(credentialsPath(), JSON.stringify({ authToken: 'X', password: 'hunter2', totpSecret: 'JBSWY3DPEE' }), 'utf8');
+    const out = readCredentials() as unknown as Record<string, unknown>;
+    expect(out['password']).toBeUndefined();
+    expect(out['totpSecret']).toBeUndefined();
   });
 
   it('reads old credential files (pre-new-fields) without errors', () => {
@@ -75,13 +77,11 @@ describe('writeCredentials / readCredentials', () => {
     expect(readCredentials()).toMatchObject({
       authToken: 'X',
       email: undefined,
-      password: undefined,
-      totpSecret: undefined,
     });
   });
 
   it('writes the file with 0600 permissions', () => {
-    writeCredentials({ authToken: 'TOKEN', csrfToken: undefined, businessId: undefined, email: undefined, password: undefined, totpSecret: undefined });
+    writeCredentials({ authToken: 'TOKEN', csrfToken: undefined, businessId: undefined, email: undefined });
     const mode = statSync(credentialsPath()).mode & 0o777;
     expect(mode).toBe(0o600);
   });
@@ -111,8 +111,6 @@ describe('writeCredentials / readCredentials', () => {
       csrfToken: undefined,
       businessId: undefined,
       email: undefined,
-      password: undefined,
-      totpSecret: undefined,
       updatedAt: '',
     });
   });
@@ -125,18 +123,51 @@ describe('patchCredentials', () => {
       csrfToken: 'CSRF',
       businessId: undefined,
       email: undefined,
-      password: undefined,
-      totpSecret: undefined,
     });
-    const updated = patchCredentials({ email: 'me@example.com', password: 'pw' });
+    const updated = patchCredentials({ email: 'me@example.com' });
     expect(updated.authToken).toBe('TOKEN');
     expect(updated.csrfToken).toBe('CSRF');
     expect(updated.email).toBe('me@example.com');
-    expect(updated.password).toBe('pw');
   });
 
   it('throws when no auth token exists and none is provided', () => {
-    expect(() => patchCredentials({ email: 'me@example.com' })).toThrowError(/paste/);
+    expect(() => patchCredentials({ email: 'me@example.com' })).toThrowError(/login/);
+  });
+});
+
+describe('migrateLegacySecrets', () => {
+  it('moves a plaintext password and TOTP secret into the store and scrubs the file', () => {
+    writeFileSync(
+      credentialsPath(),
+      JSON.stringify({ authToken: 'X', email: 'me@example.com', password: 'hunter2', totpSecret: 'JBSWY3DPEE', updatedAt: 'then' }),
+      'utf8',
+    );
+    const store = memorySecretStore();
+    expect(migrateLegacySecrets(store)).toEqual(['password', 'totp-secret']);
+    expect(store.get('password')).toBe('hunter2');
+    expect(store.get('totp-secret')).toBe('JBSWY3DPEE');
+    const raw = JSON.parse(readFileSync(credentialsPath(), 'utf8')) as Record<string, unknown>;
+    expect(raw).toEqual({ authToken: 'X', email: 'me@example.com', updatedAt: 'then' });
+    expect(statSync(credentialsPath()).mode & 0o777).toBe(0o600);
+  });
+
+  it('is a no-op when the file holds no secrets', () => {
+    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined });
+    const before = readFileSync(credentialsPath(), 'utf8');
+    expect(migrateLegacySecrets(memorySecretStore())).toEqual([]);
+    expect(readFileSync(credentialsPath(), 'utf8')).toBe(before);
+  });
+
+  it('is a no-op when there is no file', () => {
+    expect(migrateLegacySecrets(memorySecretStore())).toEqual([]);
+  });
+
+  it('leaves the file untouched when the store rejects a write', () => {
+    writeFileSync(credentialsPath(), JSON.stringify({ authToken: 'X', password: 'hunter2' }), 'utf8');
+    const before = readFileSync(credentialsPath(), 'utf8');
+    const failing = { ...memorySecretStore(), set: (): void => { throw new Error('keychain locked'); } };
+    expect(() => migrateLegacySecrets(failing)).toThrowError(/keychain locked/);
+    expect(readFileSync(credentialsPath(), 'utf8')).toBe(before);
   });
 });
 

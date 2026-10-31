@@ -27,10 +27,10 @@ export class WaveGraphQLClient {
 
   async execute<TData, TVars = Record<string, unknown>>(op: GraphQLOperation<TVars>): Promise<TData> {
     const res = await this.fetchOnce(op);
-    if (res.status === 401 || res.status === 403) {
+    if (await isAuthFailure(res)) {
       if (this.refresher && (await this.refresher())) {
         const retry = await this.fetchOnce(op);
-        if (retry.status === 401 || retry.status === 403) throw new WaveAuthError();
+        if (await isAuthFailure(retry)) throw new WaveAuthError();
         return this.parsePayload(retry, op);
       }
       throw new WaveAuthError();
@@ -73,6 +73,21 @@ export class WaveGraphQLClient {
       });
     }
     return payload.data;
+  }
+}
+
+/**
+ * 401/403, or an expired token, which Wave reports as HTTP 200 with an
+ * `UNAUTHENTICATED` error ("Invalid request, authentication expired.").
+ */
+async function isAuthFailure(res: Response): Promise<boolean> {
+  if (res.status === 401 || res.status === 403) return true;
+  if (!res.ok) return false;
+  try {
+    const payload = (await res.clone().json()) as GraphQLResponse<unknown>;
+    return (payload.errors ?? []).some((e) => (e.extensions as { code?: unknown } | undefined)?.code === 'UNAUTHENTICATED');
+  } catch {
+    return false;
   }
 }
 

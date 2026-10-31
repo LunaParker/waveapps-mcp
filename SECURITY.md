@@ -1,6 +1,6 @@
 # Security policy
 
-`waveapps-mcp` stores Wave session cookies on disk and (optionally) your Wave password and TOTP secret. A vulnerability that exposes either could let an attacker act as you inside Wave. Please treat security bugs in this project seriously.
+`waveapps-mcp` stores Wave session cookies on disk and (optionally) your Wave password and TOTP secret in the OS credential store. A vulnerability that exposes either could let an attacker act as you inside Wave. Please treat security bugs in this project seriously.
 
 ## Reporting a vulnerability
 
@@ -28,6 +28,7 @@ You can expect:
 ## Scope worth reporting
 
 - Credentials written to a world-readable path, or with weaker file permissions than `0600`.
+- The password or TOTP secret written anywhere other than the OS credential store (a file, a log, a process argument list).
 - Credentials leaking into logs, error messages, or transport over the wire to anywhere other than Wave's own domains (`*.waveapps.com`).
 - Anywhere the MCP server can be tricked by tool arguments into making a request that wasn't intended (SSRF, prompt-injection-driven exfiltration, etc.).
 - Authentication-refresh logic accepting forged session responses.

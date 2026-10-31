@@ -6,7 +6,7 @@ export class WaveError extends Error {
 }
 
 export class WaveAuthError extends WaveError {
-  constructor(message = 'Wave auth rejected — token likely expired. Re-grab the `waveapps` cookie from a logged-in browser.') {
+  constructor(message = 'Wave auth rejected — session likely expired. Run `npx waveapps-mcp login` to sign in again.') {
     super(message);
     this.name = 'WaveAuthError';
   }
