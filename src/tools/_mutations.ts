@@ -1,3 +1,5 @@
+import { CUSTOMER_FRAGMENTS } from './_queries.js';
+
 // GraphQL mutations captured verbatim from next.waveapps.com on 2026-05-11.
 // Wave's server may allow-list query texts; do NOT minify or rewrite.
 
@@ -274,5 +276,62 @@ export const SEND_ESTIMATE_MUTATION = `mutation SendEstimate($input: EstimateSen
       path
       code
     }
+  }
+}`;
+
+export const PATCH_CUSTOMER_MUTATION = `mutation PatchCustomer($input: CustomerPatchInput!) {
+  customerPatch(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+    }
+    customer {
+      ...CustomerFragment
+    }
+  }
+}
+
+${CUSTOMER_FRAGMENTS}`;
+
+const STATEMENT_ERRORS = `didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }`;
+
+export const CREATE_OUTSTANDING_STATEMENT_MUTATION = `mutation CreateOutstandingInvoicesStatement($input: OutstandingInvoicesStatementCreateInput!) {
+  outstandingInvoicesStatementCreate(input: $input) {
+    ${STATEMENT_ERRORS}
+    outstandingInvoicesStatement {
+      id
+      reportDate
+      shareLink
+    }
+  }
+}`;
+
+export const CREATE_ACTIVITY_STATEMENT_MUTATION = `mutation CreateAccountActivityStatement($input: AccountActivityStatementCreateInput!) {
+  accountActivityStatementCreate(input: $input) {
+    ${STATEMENT_ERRORS}
+    accountActivityStatement {
+      id
+      fromDate
+      toDate
+      shareLink
+    }
+  }
+}`;
+
+export const SEND_OUTSTANDING_STATEMENT_MUTATION = `mutation SendOutstandingInvoicesStatement($input: OutstandingInvoicesStatementSendInput!) {
+  outstandingInvoicesStatementSend(input: $input) {
+    ${STATEMENT_ERRORS}
+  }
+}`;
+
+export const SEND_ACTIVITY_STATEMENT_MUTATION = `mutation SendAccountActivityStatement($input: AccountActivityStatementSendInput!) {
+  accountActivityStatementSend(input: $input) {
+    ${STATEMENT_ERRORS}
   }
 }`;

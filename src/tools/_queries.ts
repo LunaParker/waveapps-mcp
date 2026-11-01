@@ -516,3 +516,17 @@ export const GET_ESTIMATE_QUERY = `query GetEstimate($businessId: ID!, $estimate
     }
   }
 }`;
+
+/** The customer fragments captured with CUSTOMER_LIST_QUERY, reused verbatim by single-customer reads and writes. */
+export const CUSTOMER_FRAGMENTS = CUSTOMER_LIST_QUERY.slice(CUSTOMER_LIST_QUERY.indexOf('fragment CustomerDetailFragment'));
+
+export const GET_CUSTOMER_QUERY = `query GetCustomer($businessId: ID!, $customerId: ID!) {
+  business(id: $businessId) {
+    id
+    customer(id: $customerId) {
+      ...CustomerFragment
+    }
+  }
+}
+
+${CUSTOMER_FRAGMENTS}`;

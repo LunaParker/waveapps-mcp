@@ -12,6 +12,7 @@ import { registerAccountTools } from './accounts.js';
 import { registerPaymentTools } from './payments.js';
 import { registerSalesTaxTools } from './sales-taxes.js';
 import { registerReportTools } from './reports.js';
+import { registerCustomerStatementTools } from './customer-statements.js';
 
 export function registerAllTools(server: McpServer, client: WaveClient): void {
   registerBusinessTools(server, client);
@@ -26,4 +27,5 @@ export function registerAllTools(server: McpServer, client: WaveClient): void {
   registerPaymentTools(server, client);
   registerSalesTaxTools(server, client);
   registerReportTools(server, client);
+  registerCustomerStatementTools(server, client);
 }
