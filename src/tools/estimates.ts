@@ -10,14 +10,28 @@ import {
 } from './_mutations.js';
 import { flattenConnection, jsonResult } from './_helpers.js';
 
-const EstimateStatusFilter = z.enum(['ACTIVE', 'DRAFT', 'CONVERTED', 'EXPIRED', 'OVERDUE']);
+// Values checked against Wave's live schema (npm run test:live re-checks every one).
+const EstimateStatusFilter = z.enum([
+  'ACTIVE',
+  'DRAFT',
+  'SENT',
+  'VIEWED',
+  'APPROVED',
+  'ACCEPTED',
+  'CONVERTED',
+  'EXPIRED',
+  'PAID',
+  'UNPAID',
+]);
 const EstimateSort = z.enum([
   'ESTIMATE_DATE_DESC',
   'ESTIMATE_DATE_ASC',
   'ESTIMATE_NUMBER_DESC',
   'ESTIMATE_NUMBER_ASC',
 ]);
-const EstimateLifecycleStatus = z.enum(['DRAFT', 'ACTIVE']);
+const EstimateLifecycleStatus = z.enum(['DRAFT', 'SENT', 'VIEWED', 'APPROVED', 'ACCEPTED', 'CONVERTED', 'EXPIRED']);
+const EstimateDepositStatus = z.enum(['DISABLED', 'ENABLED_OPTIONAL', 'ENABLED_MANDATORY']);
+const EstimateDepositUnit = z.enum(['AMOUNT', 'PERCENTAGE']);
 
 const EstimateItemInput = z.object({
   productId: z
@@ -36,9 +50,11 @@ const EstimateItemInput = z.object({
     .string()
     .describe('Integer income account ID as a string. From `wave_list_invoices` (`items[].product.income_account.id`).'),
   taxIds: z
-    .array(z.string())
+    .array(z.union([z.number().int().positive(), z.string().min(1)]))
     .default([])
-    .describe('Composite Relay IDs of taxes to apply. Empty for none.'),
+    .describe(
+      "Sales taxes to apply to this line. Integer Wave sales-tax IDs, the same ones invoices use (e.g. `[1897235638]` for HST 13%; discover via an existing invoice's `items[].taxes[].sales_tax.id`). A SalesTax Relay ID string is also accepted. Empty for none.",
+    ),
 });
 
 interface EstimateBucket {
@@ -71,7 +87,10 @@ function itemsForApi(
     unitPrice: it.unitPrice,
     quantity: it.quantity,
     incomeAccountClassicId: it.incomeAccountClassicId,
-    taxes: it.taxIds,
+    // Wave wants { salesTaxId } objects here; a bare ID fails as "Expected type EstimateCreateItemTaxInput".
+    taxes: it.taxIds.map((id) => ({
+      salesTaxId: typeof id === 'number' ? toCompositeGlobalId(businessUuid, 'SalesTax', id) : id,
+    })),
   }));
 }
 
@@ -213,7 +232,9 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
           .describe('Composite Relay ID of the estimate, base64 `Business:UUID;Estimate:int`.'),
         customerId: z.number().int().positive(),
         items: z.array(EstimateItemInput).min(1),
-        status: EstimateLifecycleStatus.default('DRAFT'),
+        status: EstimateLifecycleStatus.default('DRAFT').describe(
+          "Pass the estimate's current `status` from `wave_list_estimates` to leave it unchanged.",
+        ),
         estimateNumber: z.string(),
         poNumber: z.string().default(''),
         estimateDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -228,7 +249,15 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
         unitTitle: z.string().default('Hours'),
         priceTitle: z.string().default('Rate'),
         amountTitle: z.string().default('Amount'),
-        depositStatus: z.enum(['DISABLED', 'ENABLED']).default('DISABLED'),
+        depositStatus: EstimateDepositStatus.default('DISABLED').describe(
+          'ENABLED_OPTIONAL asks the customer for a deposit; ENABLED_MANDATORY requires it. Both need depositUnit and depositValue.',
+        ),
+        depositUnit: EstimateDepositUnit.optional(),
+        depositValue: z
+          .string()
+          .regex(/^\d+(\.\d+)?$/)
+          .optional()
+          .describe('Deposit as a decimal string: a currency amount for AMOUNT, a percent for PERCENTAGE (e.g. "25").'),
         disableCreditCardPayments: z.boolean().default(true),
         disableAmexPayments: z.boolean().default(true),
       },
@@ -236,6 +265,10 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
     },
     async (args) => {
       const businessUuid = client.businessId(args.businessId);
+      const depositEnabled = args.depositStatus !== 'DISABLED';
+      if (depositEnabled && (args.depositUnit === undefined || args.depositValue === undefined)) {
+        throw new Error(`depositStatus ${args.depositStatus} needs both depositUnit and depositValue.`);
+      }
       const input = {
         id: args.estimateGlobalId,
         status: args.status,
@@ -263,8 +296,8 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
         hidePrice: false,
         hideAmount: false,
         depositStatus: args.depositStatus,
-        depositUnit: null,
-        depositValue: null,
+        depositUnit: depositEnabled ? args.depositUnit : null,
+        depositValue: depositEnabled ? args.depositValue : null,
         disableCreditCardPayments: args.disableCreditCardPayments,
         disableAmexPayments: args.disableAmexPayments,
       };

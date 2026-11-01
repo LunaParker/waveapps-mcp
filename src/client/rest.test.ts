@@ -83,6 +83,14 @@ describe('WaveRestClient', () => {
       expect(out.meta.pageSize).toBe(25);
     });
 
+    it('derives totalPages from X-Total-Count when Wave omits X-Total-Pages', async () => {
+      fetchSpy.mockResolvedValueOnce(
+        mockResponse([], { headers: { 'content-type': 'application/json', 'X-Total-Count': '101' } }),
+      );
+      const out = await client.getPaged('/items/', { page_size: 25 });
+      expect(out.meta).toEqual({ page: 1, pageSize: 25, totalCount: 101, totalPages: 5 });
+    });
+
     it('handles missing X-Total-* headers as null', async () => {
       fetchSpy.mockResolvedValueOnce(mockResponse([]));
       const out = await client.getPaged('/items/');

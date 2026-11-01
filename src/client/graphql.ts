@@ -13,7 +13,11 @@ export interface GraphQLOperation<TVars> {
 
 interface GraphQLResponse<TData> {
   data?: TData;
-  errors?: ReadonlyArray<{ message: string; extensions?: unknown; path?: ReadonlyArray<string | number> }>;
+  errors?: ReadonlyArray<{
+    message: string;
+    extensions?: { code?: string };
+    path?: ReadonlyArray<string | number>;
+  }>;
 }
 
 export class WaveGraphQLClient {
@@ -58,13 +62,14 @@ export class WaveGraphQLClient {
   }
 
   private async parsePayload<TData, TVars>(res: Response, op: GraphQLOperation<TVars>): Promise<TData> {
-    if (!res.ok) {
-      const errBody = await safeText(res);
-      throw new WaveApiError({ status: res.status, url: GQL_ENDPOINT, body: errBody });
-    }
-    const payload = (await res.json()) as GraphQLResponse<TData>;
-    if (payload.errors && payload.errors.length > 0) {
+    const text = await safeText(res);
+    const payload = parseJson(text) as GraphQLResponse<TData> | undefined;
+    // Schema drift (unknown field, renamed input or enum) is a 400 that still carries GraphQL errors.
+    if (payload?.errors && payload.errors.length > 0) {
       throw new WaveGraphQLError({ operationName: op.operationName, errors: payload.errors });
+    }
+    if (!res.ok || payload === undefined) {
+      throw new WaveApiError({ status: res.status, url: GQL_ENDPOINT, body: text });
     }
     if (payload.data === undefined) {
       throw new WaveGraphQLError({
@@ -85,7 +90,7 @@ async function isAuthFailure(res: Response): Promise<boolean> {
   if (!res.ok) return false;
   try {
     const payload = (await res.clone().json()) as GraphQLResponse<unknown>;
-    return (payload.errors ?? []).some((e) => (e.extensions as { code?: unknown } | undefined)?.code === 'UNAUTHENTICATED');
+    return (payload.errors ?? []).some((e) => e.extensions?.code === 'UNAUTHENTICATED');
   } catch {
     return false;
   }
@@ -96,5 +101,13 @@ async function safeText(res: Response): Promise<string> {
     return await res.text();
   } catch {
     return '';
+  }
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
   }
 }
