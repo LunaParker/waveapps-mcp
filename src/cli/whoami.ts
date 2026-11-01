@@ -24,8 +24,9 @@ export function runWhoami(deps: RunWhoamiDeps = {}): number {
   log(`  email:      ${creds.email ?? '(none)'}`);
   const password = describeSecret(store, 'password');
   const totpSecret = describeSecret(store, 'totp-secret');
-  log(`  password:   ${password === 'stored' ? '(in OS credential store — auto sign-in enabled)' : password === 'missing' ? '(none — run `login` when the session expires)' : password}`);
-  log(`  totpSecret: ${totpSecret === 'stored' ? '(in OS credential store — 2FA bypass enabled ⚠️)' : totpSecret === 'missing' ? '(none)' : totpSecret}`);
+  const where = (name: SecretName): string => store.source?.(name) ?? 'in OS credential store';
+  log(`  password:   ${password === 'stored' ? `(${where('password')} — auto sign-in enabled)` : password === 'missing' ? '(none — run `login` when the session expires)' : password}`);
+  log(`  totpSecret: ${totpSecret === 'stored' ? `(${where('totp-secret')} — 2FA bypass enabled ⚠️)` : totpSecret === 'missing' ? '(none)' : totpSecret}`);
   log(`  updatedAt:  ${creds.updatedAt || '(unknown)'} (~${ageHuman} ago)`);
   return 0;
 }
@@ -34,7 +35,8 @@ function describeSecret(store: SecretStore, name: SecretName): 'stored' | 'missi
   try {
     return store.get(name) ? 'stored' : 'missing';
   } catch (err) {
-    return `(could not read the OS credential store: ${(err as Error).message})`;
+    const message = (err as Error).message;
+    return store.readOnly ? `(${message})` : `(could not read the OS credential store: ${message})`;
   }
 }
 

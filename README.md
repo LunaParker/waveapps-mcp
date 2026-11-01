@@ -210,8 +210,69 @@ Nothing in this project reads a `.env` file. Set these in your shell, or in the 
 | `WAVE_MCP_TRANSPORT` | `stdio` (default) or `http`. |
 | `WAVE_MCP_BIND` / `WAVE_MCP_PORT` | Where the HTTP transport listens. Default `127.0.0.1:8765`. |
 | `WAVE_MCP_HTTP_TOKEN` | Bearer token HTTP clients must send. Required when `WAVE_MCP_BIND` is not a loopback address, because anyone who can reach the port can otherwise act in your Wave account. |
+| `WAVE_MCP_HTTP_TOKEN_FILE` | A file holding the bearer token, instead of `WAVE_MCP_HTTP_TOKEN` (set one or the other). Read once at startup. |
+| `WAVE_PASSWORD_FILE` / `WAVE_TOTP_SECRET_FILE` | Files holding the Wave password and TOTP secret, for machines without an OS credential store. When either is set, the server reads secrets only from these files (on every use, so you can replace them without a restart), `save-password` records just your email, and `logout` leaves the files alone. Keep them `chmod 600`. |
 
 With the HTTP transport, loopback listeners also refuse requests whose `Host` header names anything other than a loopback address (`localhost`, `127.x.x.x` or `::1`, on any port), which blocks DNS-rebinding attacks from web pages.
+
+## Using it from claude.ai
+
+Claude's apps call remote connectors from Anthropic's servers, so a connector has to be reachable from the internet. The `gateway/` folder makes that safe: a small [FastMCP](https://gofastmcp.com) proxy that signs people in with Google, admits only the email addresses you list, and passes their calls to this server over loopback with a token only the two of them share.
+
+```
+Claude --HTTPS--> your public URL --> gateway (127.0.0.1:8000) --token--> waveapps-mcp (127.0.0.1:8765) --> Wave
+```
+
+The gateway only listens on loopback. Giving it a public HTTPS address (Tailscale Funnel, a Cloudflare Tunnel or a reverse proxy) is up to you.
+
+1. **Create the secret files**, readable only by you:
+
+   ```bash
+   mkdir -p ~/.config/waveapps-mcp-gateway && cd ~/.config/waveapps-mcp-gateway
+   umask 077
+   openssl rand -hex 32 > http-token
+   openssl rand -hex 32 > jwt-signing-key
+   ```
+
+2. **Create a Google OAuth client.** In the Google Cloud console, open APIs & Services, then Credentials, and create an OAuth client ID of type **Web application**. Add `https://<your public URL>/auth/callback` as an authorized redirect URI, and save the client secret as `~/.config/waveapps-mcp-gateway/google-client-secret`. The consent screen only needs the `openid` and `email` scopes. Publish it to production: a client left in testing loses its tokens every 7 days.
+
+3. **Run the server** with the HTTP transport and the token, from the repo folder:
+
+   ```bash
+   WAVE_MCP_TRANSPORT=http WAVE_MCP_HTTP_TOKEN_FILE="$HOME/.config/waveapps-mcp-gateway/http-token" node dist/server.js
+   ```
+
+   On a machine without an OS credential store, also set `WAVE_PASSWORD_FILE` and `WAVE_TOTP_SECRET_FILE` (see the table above), and run `npx waveapps-mcp save-password` once to record your email.
+
+4. **Run the gateway.** It needs [uv](https://docs.astral.sh/uv/):
+
+   ```bash
+   cd gateway
+   uv sync --locked
+   BASE_URL="https://<your public URL>" \
+   ALLOWED_EMAILS="you@example.com" \
+   GOOGLE_OAUTH_CLIENT_ID="<client id>" \
+   GOOGLE_OAUTH_CLIENT_SECRET_FILE="$HOME/.config/waveapps-mcp-gateway/google-client-secret" \
+   JWT_SIGNING_KEY_FILE="$HOME/.config/waveapps-mcp-gateway/jwt-signing-key" \
+   WAVE_MCP_HTTP_TOKEN_FILE="$HOME/.config/waveapps-mcp-gateway/http-token" \
+   uv run waveapps-mcp-gateway
+   ```
+
+5. **Add the connector.** In claude.ai, open Settings, then Connectors, and add a custom connector with the URL `https://<your public URL>/mcp`. Leave the advanced OAuth fields empty, then sign in with a listed Google account.
+
+A healthy gateway answers `/mcp` with 401 (it wants a sign-in) and `/.well-known/oauth-authorization-server` with 200.
+
+| Gateway variable | Default | What it does |
+| --- | --- | --- |
+| `BASE_URL` | required | The gateway's public URL. Google redirects to `BASE_URL/auth/callback`. |
+| `ALLOWED_EMAILS` | required | Comma-separated Google accounts allowed in. They must be verified. |
+| `GOOGLE_OAUTH_CLIENT_ID` | required | From step 2. |
+| `GOOGLE_OAUTH_CLIENT_SECRET_FILE` | required | File holding the client secret. |
+| `JWT_SIGNING_KEY_FILE` | required | File holding the key that signs the gateway's tokens and encrypts its saved sign-ins. Changing it signs every client out. |
+| `WAVE_MCP_HTTP_TOKEN_FILE` | required | The same token file the server reads. |
+| `WAVE_GATEWAY_UPSTREAM_URL` | `http://127.0.0.1:8765/mcp` | Where the server listens. |
+| `WAVE_GATEWAY_HOST` / `WAVE_GATEWAY_PORT` | `127.0.0.1` / `8000` | Where the gateway listens. |
+| `WAVE_GATEWAY_STATE_DIR` | `~/.local/state/waveapps-mcp-gateway` | Saved client registrations and sign-ins, encrypted. |
 
 ## Try it
 

@@ -95,8 +95,10 @@ export function patchCredentials(partial: Partial<Omit<StoredCredentials, 'updat
  * Move a plaintext password / TOTP secret left in credentials.json by older versions into
  * the OS credential store, then rewrite the file without them. Leaves the file untouched
  * if the store rejects a write. Returns the secrets that moved.
+ * Does nothing for a read-only store (secrets from files); the legacy fields stay put.
  */
 export function migrateLegacySecrets(store: SecretStore = secretStore()): SecretName[] {
+  if (store.readOnly) return [];
   const raw = readRaw();
   if (raw === null) return [];
   const found = LEGACY_SECRET_FIELDS.filter(([field]) => typeof raw[field] === 'string' && raw[field] !== '');

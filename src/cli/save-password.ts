@@ -1,5 +1,5 @@
 import { credentialsPath, patchCredentials, readCredentials } from '../auth/credentials.js';
-import { secretStore, type SecretStore } from '../auth/secrets.js';
+import { SECRET_FILE_VARS, secretStore, type SecretStore } from '../auth/secrets.js';
 import { totp } from '../auth/totp.js';
 import { Prompter, type PromptIo } from './prompter.js';
 import { sanitise } from './sanitise.js';
@@ -79,6 +79,31 @@ function visualWidth(text: string): number {
 
 const CONFIRM_PROMPT = `\nType "y" to confirm you've read the warning above and want to proceed (anything else aborts): `;
 
+type Say = (message: string) => void;
+
+async function askEmail(io: PromptIo, current: string | undefined): Promise<string | undefined> {
+  const raw = sanitise(await io.ask(`  Wave email${current ? ` [${current}]` : ''}: `));
+  return raw.length > 0 ? raw : current;
+}
+
+/** With secrets in files, only the email needs saving: sign-in reads it from credentials.json. */
+async function saveEmailOnly(io: PromptIo, log: Say, err: Say): Promise<number> {
+  const existing = readCredentials();
+  if (!existing) {
+    err(`[waveapps-mcp] No credentials.json yet — run \`${cliCommand('login')}\` once first.`);
+    return SAVE_PW_EXIT_NO_INPUT;
+  }
+  log(`[waveapps-mcp] The password and TOTP secret come from ${SECRET_FILE_VARS.password} and ${SECRET_FILE_VARS['totp-secret']}; only the email is saved here.`);
+  const email = await askEmail(io, existing.email);
+  if (!email) {
+    err('[waveapps-mcp] Email is required.');
+    return SAVE_PW_EXIT_NO_INPUT;
+  }
+  patchCredentials({ email });
+  log(`[waveapps-mcp] Email saved to ${credentialsPath()}.`);
+  return SAVE_PW_EXIT_OK;
+}
+
 /**
  * Prompt for email + password (+ optional TOTP secret). The email goes in credentials.json,
  * the secrets in the OS credential store. Doesn't sign in: that happens on the next expiry.
@@ -93,6 +118,7 @@ export async function runSavePassword(
   const store = deps.store ?? secretStore();
 
   try {
+    if (store.readOnly) return await saveEmailOnly(io, log, err);
     for (const line of BANNER_LINES) log(line);
 
     if (!options.skipConfirmation) {
@@ -112,8 +138,7 @@ export async function runSavePassword(
       return SAVE_PW_EXIT_NO_INPUT;
     }
 
-    const emailRaw = sanitise(await io.ask(`  Wave email${existing.email ? ` [${existing.email}]` : ''}: `));
-    const email = emailRaw.length > 0 ? emailRaw : existing.email;
+    const email = await askEmail(io, existing.email);
     if (!email) {
       err('[waveapps-mcp] Email is required.');
       return SAVE_PW_EXIT_NO_INPUT;

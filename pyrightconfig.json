@@ -1,0 +1,7 @@
+{
+  "include": ["gateway"],
+  "exclude": ["gateway/.venv"],
+  "venvPath": "gateway",
+  "venv": ".venv",
+  "extraPaths": ["gateway/src"]
+}

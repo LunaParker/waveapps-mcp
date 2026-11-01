@@ -1,7 +1,10 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import type { Server } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { hostnameOf, httpOptionsFromEnv, isAuthorized, isLoopback, startHttp } from './http.js';
 
 const INITIALIZE = JSON.stringify({
@@ -53,6 +56,47 @@ describe('httpOptionsFromEnv', () => {
   it('refuses a bad port', () => {
     expect(() => httpOptionsFromEnv({ WAVE_MCP_PORT: 'eighty' })).toThrow(/WAVE_MCP_PORT/);
     expect(() => httpOptionsFromEnv({ WAVE_MCP_PORT: '70000' })).toThrow(/WAVE_MCP_PORT/);
+  });
+});
+
+describe('httpOptionsFromEnv with WAVE_MCP_HTTP_TOKEN_FILE', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'wave-mcp-token-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function tokenFile(content: string): string {
+    const file = join(dir, 'token');
+    writeFileSync(file, content);
+    return file;
+  }
+
+  it('reads and trims the token from the file', () => {
+    expect(httpOptionsFromEnv({ WAVE_MCP_HTTP_TOKEN_FILE: tokenFile('EXAMPLE_TOKEN_from_file\n') }).token).toBe('EXAMPLE_TOKEN_from_file');
+  });
+
+  it('satisfies the non-loopback rule like the plain variable', () => {
+    const opts = httpOptionsFromEnv({ WAVE_MCP_BIND: '0.0.0.0', WAVE_MCP_HTTP_TOKEN_FILE: tokenFile('EXAMPLE_TOKEN_from_file') });
+    expect(opts.token).toBe('EXAMPLE_TOKEN_from_file');
+  });
+
+  it('rejects an empty file', () => {
+    expect(() => httpOptionsFromEnv({ WAVE_MCP_HTTP_TOKEN_FILE: tokenFile('  \n') })).toThrow(/WAVE_MCP_HTTP_TOKEN_FILE .* is empty/);
+  });
+
+  it('names the path when the file cannot be read', () => {
+    const missing = join(dir, 'missing');
+    expect(() => httpOptionsFromEnv({ WAVE_MCP_HTTP_TOKEN_FILE: missing })).toThrow(missing);
+  });
+
+  it('refuses both forms at once', () => {
+    const env = { WAVE_MCP_HTTP_TOKEN: 'EXAMPLE_TOKEN_value', WAVE_MCP_HTTP_TOKEN_FILE: tokenFile('EXAMPLE_TOKEN_from_file') };
+    expect(() => httpOptionsFromEnv(env)).toThrow(/not both/);
   });
 });
 

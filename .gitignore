@@ -51,3 +51,8 @@ NOTES.md
 # (could be used to abuse Wave's internal API). Kept out of git deliberately.
 docs/
 
+
+# ─── Python (gateway/) ───────────────────────────────────────────────────────
+.venv/
+__pycache__/
+.pytest_cache/

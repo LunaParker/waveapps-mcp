@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -21,13 +22,30 @@ export function httpOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): HttpOp
     throw new Error(`WAVE_MCP_PORT must be a port number, got: ${rawPort}`);
   }
   const bind = env['WAVE_MCP_BIND'] || '127.0.0.1';
-  const token = env['WAVE_MCP_HTTP_TOKEN'] || undefined;
+  const token = tokenFromEnv(env);
   if (!isLoopback(bind) && !token) {
     throw new Error(
-      'WAVE_MCP_BIND is not a loopback address; set WAVE_MCP_HTTP_TOKEN so only clients with the token can drive your Wave account.',
+      'WAVE_MCP_BIND is not a loopback address; set WAVE_MCP_HTTP_TOKEN or WAVE_MCP_HTTP_TOKEN_FILE so only clients with the token can drive your Wave account.',
     );
   }
   return { port, bind, token };
+}
+
+/** The bearer token from WAVE_MCP_HTTP_TOKEN, or read once from the file WAVE_MCP_HTTP_TOKEN_FILE names. */
+function tokenFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  const inline = env['WAVE_MCP_HTTP_TOKEN'] || undefined;
+  const file = env['WAVE_MCP_HTTP_TOKEN_FILE'] || undefined;
+  if (inline && file) throw new Error('Set WAVE_MCP_HTTP_TOKEN or WAVE_MCP_HTTP_TOKEN_FILE, not both.');
+  if (!file) return inline;
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch (err) {
+    throw new Error(`Could not read WAVE_MCP_HTTP_TOKEN_FILE (${file}): ${(err as NodeJS.ErrnoException).code ?? (err as Error).message}`);
+  }
+  const token = text.trim();
+  if (token.length === 0) throw new Error(`WAVE_MCP_HTTP_TOKEN_FILE (${file}) is empty.`);
+  return token;
 }
 
 export function isLoopback(host: string): boolean {
