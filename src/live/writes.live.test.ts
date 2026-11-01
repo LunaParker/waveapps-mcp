@@ -165,6 +165,39 @@ describe.skipIf(!writes)('Wave write flows on the test customer (npm run test:li
     });
   });
 
+  it('renders, duplicates, reminds and receipts an invoice, then deletes everything', async () => {
+    const { invoice } = await call('wave_create_invoice', {
+      customerId: customer.id,
+      items: [{ productId: line.productId, name: line.name, incomeAccountId: Number(line.incomeAccountClassicId), price: '1.00', quantity: 1, taxes: [] }],
+      memo: 'TEST - live contract check, deleted automatically',
+    });
+    const invoiceId = z.object({ id: z.string() }).parse(invoice).id;
+    onCleanup(`invoice ${invoiceId}`, () => call('wave_delete_invoice', { invoiceId }));
+    await call('wave_approve_invoice', { invoiceId });
+
+    const pdf = (await tools.invoke('wave_get_invoice_pdf', { businessId, invoiceId })) as { content: Array<Record<string, any>> };
+    expect(Buffer.from(pdf.content[1]!['resource'].blob, 'base64').subarray(0, 5).toString()).toBe('%PDF-');
+
+    const copy = await call('wave_duplicate_invoice', { invoiceId });
+    expect(copy.invoiceId).toMatch(/^\d+$/);
+    onCleanup(`duplicate invoice ${copy.invoiceId}`, () => call('wave_delete_invoice', { invoiceId: copy.invoiceId }));
+    expect(copy.status).toBe('DRAFT');
+
+    await call('wave_send_invoice_reminder', {
+      invoiceId, to: [customer.email], subject: 'TEST - reminder check', message: 'Automated contract check; please ignore.',
+    });
+
+    const { accounts } = await call('wave_list_accounts');
+    const paymentAccount = (accounts as Array<{ id: number; is_payment: boolean }>).find((a) => a.is_payment);
+    if (!paymentAccount) throw new Error('Write tests need a payment account (e.g. Cash on Hand).');
+    const { payment } = await call('wave_record_invoice_payment', { invoiceId, amount: 1, paymentAccountId: paymentAccount.id, memo: 'TEST' });
+    const paymentId = String(payment.id);
+    onCleanup(`payment ${paymentId}`, () => call('wave_delete_invoice_payment', { invoiceId, paymentId }));
+    await call('wave_send_payment_receipt', {
+      invoiceId, paymentId, to: [customer.email], subject: 'TEST - receipt check', message: 'Automated contract check; please ignore.',
+    });
+  });
+
   it("emails an estimate to the test customer's own address", async () => {
     const est = await createEstimate();
     await call('wave_approve_estimate', { estimateGlobalId: est.id });

@@ -176,6 +176,15 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
       expect(invoice.invoice_currency.code).toHaveLength(3);
     });
 
+    it('wave_get_invoice_pdf embeds the PDF of the latest invoice', async ({ skip }) => {
+      const page = await call('wave_list_invoices', z.object({ items: z.array(InvoiceSummary) }).loose(), { pageSize: 1 });
+      const first = page.items[0];
+      if (!first) return skip('no invoices to render');
+      const result = (await tools.invoke('wave_get_invoice_pdf', { businessId, invoiceId: first.id })) as { content: Array<Record<string, any>> };
+      expect(JSON.parse(result.content[0]!['text'])).toMatchObject({ invoiceId: first.id, embedded: true });
+      expect(Buffer.from(result.content[1]!['resource'].blob, 'base64').subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
     it('wave_get_invoice_settings', async () => {
       await call(
         'wave_get_invoice_settings',

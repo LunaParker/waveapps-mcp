@@ -24,11 +24,13 @@ describe('registerAllTools', () => {
       'wave_delete_invoice_payment',
       'wave_delete_product',
       'wave_duplicate_estimate',
+      'wave_duplicate_invoice',
       'wave_get_business',
       'wave_get_customer',
       'wave_get_estimate',
       'wave_get_estimate_pdf',
       'wave_get_invoice',
+      'wave_get_invoice_pdf',
       'wave_get_invoice_settings',
       'wave_get_product',
       'wave_get_report',
@@ -48,11 +50,13 @@ describe('registerAllTools', () => {
       'wave_send_customer_statement',
       'wave_send_estimate',
       'wave_send_invoice',
+      'wave_send_invoice_reminder',
+      'wave_send_payment_receipt',
       'wave_update_customer',
       'wave_update_estimate',
       'wave_update_invoice',
       'wave_update_product',
     ]);
-    expect(names).toHaveLength(43);
+    expect(names).toHaveLength(47);
   });
 });

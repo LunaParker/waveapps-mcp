@@ -137,6 +137,10 @@ const CALLS: Record<string, Record<string, unknown>> = {
   wave_get_estimate_pdf: { estimateGlobalId: RELAY_ID },
   wave_get_report: { report: 'profit_and_loss', startDate: '2026-01-01', endDate: '2026-03-31', basis: 'cash' },
   wave_get_customer: { customerId: 1 },
+  wave_get_invoice_pdf: { invoiceId: '1' },
+  wave_duplicate_invoice: { invoiceId: '1' },
+  wave_send_invoice_reminder: { invoiceId: '1', to: ['nobody@example.com'], subject: 'Contract check', message: 'Contract check', fromAddress: 'nobody@example.com' },
+  wave_send_payment_receipt: { invoiceId: '1', paymentId: '1', to: ['nobody@example.com'], subject: 'Contract check', message: 'Contract check', fromAddress: 'nobody@example.com', attachPdf: true },
   wave_update_customer: {
     customerId: 1,
     name: 'Contract check',
