@@ -335,3 +335,54 @@ export const SEND_ACTIVITY_STATEMENT_MUTATION = `mutation SendAccountActivitySta
     ${STATEMENT_ERRORS}
   }
 }`;
+
+export const DUPLICATE_INVOICE_MUTATION = `mutation DuplicateInvoice($input: InvoiceCloneInput!) {
+  invoiceClone(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+    }
+    invoice {
+      id
+      invoiceNumber
+      status
+    }
+  }
+}`;
+
+export const INVOICE_PDF_MUTATION = `mutation GenerateInvoicePdf($input: InvoiceGeneratePdfInput!) {
+  invoiceGeneratePdf(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }
+    pdfUrl
+  }
+}`;
+
+export const INVOICE_REMINDER_MUTATION = `mutation SendInvoiceReminder($input: InvoiceReminderCreateInput!) {
+  invoiceReminderCreate(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }
+    invoiceReminder {
+      id
+    }
+  }
+}`;
+
+export const PAYMENT_RECEIPT_MUTATION = `mutation SendPaymentReceipt($input: InvoicePaymentReceiptSendInput!) {
+  invoicePaymentReceiptSend(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }
+  }
+}`;
