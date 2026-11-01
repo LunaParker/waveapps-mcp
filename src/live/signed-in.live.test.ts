@@ -225,6 +225,19 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
     );
   });
 
+  it('wave_get_estimate gives the fields wave_update_estimate takes', async ({ skip }) => {
+    const list = await call('wave_list_estimates', z.object({ estimates: z.array(Estimate) }), { status: 'ALL', pageSize: 1 });
+    const first = list.estimates[0];
+    if (!first) return skip('no estimates to fetch');
+    const Item = z.object({ productId: IntId, name: z.string(), unitPrice: z.union([z.string(), z.number()]), incomeAccountClassicId: z.string() });
+    const { estimate } = await call(
+      'wave_get_estimate',
+      z.object({ estimate: z.object({ id: z.string(), status: z.string(), items: z.array(Item) }) }),
+      { estimateGlobalId: first.id },
+    );
+    expect(estimate.id).toBe(first.id);
+  });
+
   it('wave_list_bills', async () => {
     const out = await call(
       'wave_list_bills',

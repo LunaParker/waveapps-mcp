@@ -120,6 +120,21 @@ const CALLS: Record<string, Record<string, unknown>> = {
   },
   wave_list_receipts: {},
   wave_list_sales_taxes: { includeArchived: false },
+  wave_get_estimate: { estimateGlobalId: RELAY_ID },
+  wave_approve_estimate: { estimateGlobalId: RELAY_ID },
+  wave_send_estimate: {
+    estimateGlobalId: RELAY_ID,
+    to: ['nobody@example.com'],
+    subject: 'Contract check',
+    message: 'Contract check',
+    fromAddress: 'nobody@example.com',
+  },
+  wave_mark_estimate_sent: { estimateGlobalId: RELAY_ID, sentAt: '2026-01-01T09:00:00-05:00' },
+  wave_accept_estimate: { estimateGlobalId: RELAY_ID },
+  wave_reset_estimate_acceptance: { estimateGlobalId: RELAY_ID },
+  wave_duplicate_estimate: { estimateGlobalId: RELAY_ID },
+  wave_convert_estimate_to_invoice: { estimateGlobalId: RELAY_ID },
+  wave_get_estimate_pdf: { estimateGlobalId: RELAY_ID },
   wave_list_products: {},
   wave_get_product: { productId: 1 },
   wave_create_product: { name: 'Contract check', price: 1, incomeAccountId: 1, defaultSalesTaxes: [1] },
@@ -143,6 +158,7 @@ const GRAPHQL_ENUM_INPUTS: ReadonlyArray<[tool: string, field: string, base: Rec
   ['wave_update_estimate', 'status', UNTAXED_ESTIMATE],
   ['wave_update_estimate', 'depositStatus', UNTAXED_ESTIMATE],
   ['wave_update_estimate', 'depositUnit', { ...UNTAXED_ESTIMATE, depositStatus: 'ENABLED_OPTIONAL' }],
+  ['wave_mark_estimate_sent', 'sendMethod', { estimateGlobalId: RELAY_ID }],
 ];
 
 // Explicit auth and business: nothing is read from env or ~/.config, and no refresher is wired.

@@ -10,6 +10,7 @@ import {
   shapeProduct,
   shapeReceipt,
   shapeSalesTaxSummary,
+  shapeEstimateRef,
   looksLikeInvoice,
 } from './_shape.js';
 
@@ -344,5 +345,13 @@ describe('shapeSalesTaxSummary (GraphQL)', () => {
   it('degrades to nulls on a malformed record', () => {
     expect(shapeSalesTaxSummary({ id: 'not-base64-relay', rates: 'x' })).toMatchObject({ id: null, rates: [] });
     expect(shapeSalesTaxSummary(null).id).toBeNull();
+  });
+});
+
+describe('shapeEstimateRef (GraphQL)', () => {
+  it('keeps id, decoded internal id, number and status', () => {
+    const id = Buffer.from('Business:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee;Estimate:77', 'utf8').toString('base64');
+    expect(shapeEstimateRef({ id, estimateNumber: '12', status: 'APPROVED', __typename: 'Estimate' })).toEqual({ id, internalId: '77', estimateNumber: '12', status: 'APPROVED' });
+    expect(shapeEstimateRef(null)).toBeNull();
   });
 });

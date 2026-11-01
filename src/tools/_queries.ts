@@ -424,3 +424,95 @@ export const SALES_TAXES_QUERY = `query ListSalesTaxes($businessId: ID!, $page: 
     }
   }
 }`;
+
+export const GET_ESTIMATE_QUERY = `query GetEstimate($businessId: ID!, $estimateId: ID!) {
+  business(id: $businessId) {
+    id
+    estimate(id: $estimateId) {
+      id
+      estimateNumber
+      status
+      title
+      subhead
+      estimateDate
+      dueDate
+      poNumber
+      memo
+      footer
+      currency {
+        code
+      }
+      exchangeRate
+      customer {
+        id
+        name
+        email
+      }
+      items {
+        id
+        product {
+          id
+          name
+        }
+        description
+        quantity
+        unitPrice
+        account {
+          classicId
+          name
+        }
+        subtotal {
+          value
+        }
+        total {
+          value
+        }
+        taxes {
+          salesTax {
+            id
+            name
+            abbreviation
+            rate
+          }
+          amount {
+            value
+          }
+        }
+      }
+      itemTitle
+      unitTitle
+      priceTitle
+      amountTitle
+      subtotal {
+        value
+      }
+      discountTotal {
+        value
+      }
+      taxTotal {
+        value
+      }
+      total {
+        value
+      }
+      amountDue {
+        value
+      }
+      amountPaid {
+        value
+      }
+      createdAt
+      lastSentAt
+      lastSentVia
+      lastViewedAt
+      viewUrl
+      dontCarryOverNotesToInvoice
+      disableCreditCardPayments
+      disableAmexPayments
+      depositStatus
+      depositUnit
+      depositValue
+      depositPaymentStatus
+    }
+  }
+}`;

@@ -199,3 +199,80 @@ export const INVOICE_SEND_MUTATION = `mutation InvoiceSend($input: InvoiceSendIn
     __typename
   }
 }`;
+
+// Everything above was captured verbatim and stays that way. The operations below are the
+// exception: written for this server (Wave runs any document that validates), re-checked by `npm run test:live`.
+
+const ESTIMATE_RESULT = `didSucceed
+    inputErrors {
+      message
+      path
+    }
+    estimate {
+      id
+      estimateNumber
+      status
+    }`;
+
+export const APPROVE_ESTIMATE_MUTATION = `mutation ApproveEstimate($input: EstimateApproveInput!) {
+  estimateApprove(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const MARK_ESTIMATE_SENT_MUTATION = `mutation MarkEstimateSent($input: EstimateMarkSentInput!) {
+  estimateMarkSent(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const ACCEPT_ESTIMATE_MUTATION = `mutation AcceptEstimate($input: EstimateMarkAcceptedInput!) {
+  estimateMarkAccepted(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const RESET_ESTIMATE_ACCEPTANCE_MUTATION = `mutation ResetEstimateAcceptance($input: EstimateResetAcceptanceInput!) {
+  estimateResetAcceptance(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const DUPLICATE_ESTIMATE_MUTATION = `mutation DuplicateEstimate($input: EstimateCloneInput!) {
+  estimateClone(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const CONVERT_ESTIMATE_MUTATION = `mutation ConvertEstimate($input: ConvertEstimateToInvoiceInput!) {
+  convertEstimateToInvoice(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+    }
+    invoiceId
+  }
+}`;
+
+export const ESTIMATE_PDF_MUTATION = `mutation GenerateEstimatePdf($input: EstimateGeneratePdfInput!) {
+  estimateGeneratePdf(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+    }
+    pdfUrl
+  }
+}`;
+
+export const SEND_ESTIMATE_MUTATION = `mutation SendEstimate($input: EstimateSendInput!) {
+  estimateSend(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }
+  }
+}`;
