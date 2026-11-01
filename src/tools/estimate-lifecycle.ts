@@ -110,7 +110,7 @@ export function registerEstimateLifecycleTools(server: McpServer, client: WaveCl
         attachPDF: z.boolean().default(true),
         includeAttachments: z.boolean().default(false).describe('Also attach files uploaded to the estimate.'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async (args) => {
       const input: Record<string, unknown> = {
