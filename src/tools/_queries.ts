@@ -390,3 +390,37 @@ export const TRANSACTIONS_QUERY = `query GetTransactions($businessId: ID!, $filt
     __typename
   }
 }`;
+
+// Operations below are written for this server rather than captured: Wave runs any document
+// that validates against its schema (checked 2026-11-01), and `npm run test:live` re-validates them.
+
+export const SALES_TAXES_QUERY = `query ListSalesTaxes($businessId: ID!, $page: Int!, $pageSize: Int!, $isArchived: Boolean) {
+  business(id: $businessId) {
+    id
+    salesTaxes(page: $page, pageSize: $pageSize, isArchived: $isArchived) {
+      pageInfo {
+        currentPage
+        totalPages
+        totalCount
+      }
+      edges {
+        node {
+          id
+          name
+          abbreviation
+          description
+          rate
+          isArchived
+          isCompound
+          isRecoverable
+          taxNumber
+          showTaxNumberOnInvoices
+          rates {
+            effective
+            rate
+          }
+        }
+      }
+    }
+  }
+}`;

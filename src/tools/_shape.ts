@@ -171,6 +171,21 @@ export interface BillSummary {
   vendorIsContractor: boolean | null;
 }
 
+export interface SalesTaxSummary {
+  id: number | null;
+  relayId: string | null;
+  name: string | null;
+  abbreviation: string | null;
+  description: string | null;
+  rate: number | null;
+  rates: Array<{ effective: string | null; rate: number | null }>;
+  isArchived: boolean | null;
+  isCompound: boolean | null;
+  isRecoverable: boolean | null;
+  taxNumber: string | null;
+  showTaxNumberOnInvoices: boolean | null;
+}
+
 export interface ReceiptSummary {
   id: string | null;
   amount: string | number | null;
@@ -199,6 +214,11 @@ function bool(v: unknown): boolean | null {
 /** Money values Wave sends as a decimal string in GraphQL and a number in REST. */
 function scalar(v: unknown): string | number | null {
   return typeof v === 'string' ? v : num(v);
+}
+/** A rate Wave sends as a decimal string ("0.13") or a number. */
+function decimal(v: unknown): number | null {
+  if (typeof v === 'string' && v.trim() !== '') return num(Number(v));
+  return num(v);
 }
 /** Ids Wave sends as a numeric string (invoices, payments) or an integer (customers, items). */
 function idString(v: unknown): string | null {
@@ -464,5 +484,28 @@ export function shapeReceipt(v: unknown): ReceiptSummary {
     description: str(r['description']),
     missingFields: arr(r['missingFields']),
     attachment: att ? { id: str(att['id']), thumbnailUrl: str(att['thumbnailUrl']) } : null,
+  };
+}
+
+export function shapeSalesTaxSummary(v: unknown): SalesTaxSummary {
+  const t = obj(v) ?? {};
+  const relayId = str(t['id']);
+  const internalId = decodeInternalId(relayId);
+  return {
+    id: internalId === null ? null : num(Number(internalId)),
+    relayId,
+    name: str(t['name']),
+    abbreviation: str(t['abbreviation']),
+    description: str(t['description']),
+    rate: decimal(t['rate']),
+    rates: arr(t['rates']).map((r) => {
+      const o = obj(r) ?? {};
+      return { effective: str(o['effective']), rate: decimal(o['rate']) };
+    }),
+    isArchived: bool(t['isArchived']),
+    isCompound: bool(t['isCompound']),
+    isRecoverable: bool(t['isRecoverable']),
+    taxNumber: str(t['taxNumber']),
+    showTaxNumberOnInvoices: bool(t['showTaxNumberOnInvoices']),
   };
 }

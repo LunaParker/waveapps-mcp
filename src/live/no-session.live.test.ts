@@ -119,6 +119,7 @@ const CALLS: Record<string, Record<string, unknown>> = {
     billDateEnd: '2026-12-31',
   },
   wave_list_receipts: {},
+  wave_list_sales_taxes: { includeArchived: false },
   wave_list_products: {},
   wave_get_product: { productId: 1 },
   wave_create_product: { name: 'Contract check', price: 1, incomeAccountId: 1, defaultSalesTaxes: [1] },

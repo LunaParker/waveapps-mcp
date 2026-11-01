@@ -19,7 +19,7 @@ export const InvoiceItemInput = z.object({
   taxes: z
     .array(z.number().int().positive())
     .default([])
-    .describe('Integer sales-tax ids to apply to this line: `items[].taxes[].sales_tax.id` on wave_get_invoice. Empty for no tax.'),
+    .describe('Integer sales-tax ids to apply to this line: `id` from wave_list_sales_taxes. Empty for no tax.'),
 });
 export type InvoiceItemArgs = z.infer<typeof InvoiceItemInput>;
 

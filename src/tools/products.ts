@@ -80,7 +80,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
         defaultSalesTaxes: z
           .array(z.number().int().positive())
           .default([])
-          .describe('Integer tax IDs to apply by default when this product is added to an invoice.'),
+          .describe('Integer sales-tax ids (`id` from wave_list_sales_taxes) to apply by default when this product is added to an invoice.'),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },

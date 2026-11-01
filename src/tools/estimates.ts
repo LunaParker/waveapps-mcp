@@ -47,7 +47,7 @@ const EstimateItemInput = z.object({
     .array(z.union([z.number().int().positive(), z.string().min(1)]))
     .default([])
     .describe(
-      "Sales taxes to apply to this line. Integer Wave sales-tax IDs, the same ones invoices use (e.g. `[1897235638]` for HST 13%; discover via an existing invoice's `items[].taxes[].sales_tax.id`). A SalesTax Relay ID string is also accepted. Empty for none.",
+      "Sales taxes to apply to this line: integer `id`s from wave_list_sales_taxes (the same ids invoices take), or its `relayId` strings. Empty for none.",
     ),
 });
 

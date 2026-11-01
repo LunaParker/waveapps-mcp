@@ -237,5 +237,13 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
   it('wave_list_receipts', async () => {
     await call('wave_list_receipts', z.object({ receipts: z.array(Receipt) }), { first: 5 });
   });
+
+  it('wave_list_sales_taxes gives integer ids and numeric rates', async () => {
+    const SalesTax = z.object({ id: IntId, relayId: z.string(), name: z.string(), rate: z.number().nullable(), isArchived: z.boolean() });
+    const active = await call('wave_list_sales_taxes', z.object({ salesTaxes: z.array(SalesTax) }));
+    expect(active.salesTaxes.every((t) => !t.isArchived)).toBe(true);
+    const all = await call('wave_list_sales_taxes', z.object({ salesTaxes: z.array(SalesTax) }), { includeArchived: true });
+    expect(all.salesTaxes.length).toBeGreaterThanOrEqual(active.salesTaxes.length);
+  });
 });
 
