@@ -37,6 +37,7 @@ describe('registerAllTools', () => {
       'wave_get_invoice_pdf',
       'wave_get_invoice_settings',
       'wave_get_product',
+      'wave_get_recurring_invoice',
       'wave_get_report',
       'wave_get_transaction',
       'wave_list_accounts',
@@ -47,6 +48,7 @@ describe('registerAllTools', () => {
       'wave_list_invoices',
       'wave_list_products',
       'wave_list_receipts',
+      'wave_list_recurring_invoices',
       'wave_list_sales_taxes',
       'wave_list_tags',
       'wave_list_transactions',
@@ -65,7 +67,7 @@ describe('registerAllTools', () => {
       'wave_update_product',
       'wave_update_transaction',
     ]);
-    expect(names).toHaveLength(55);
+    expect(names).toHaveLength(57);
   });
 
   it('marks every tool that emails someone as destructive, so clients ask before it runs', () => {

@@ -13,7 +13,7 @@ This is an add-on that lets you ask **Claude** (or any other AI assistant that s
 
 …and Claude creates the invoice in Wave for you. Same for recording payments, adding customers, looking up old estimates, and so on.
 
-It works by giving Claude a set of 55 structured tools that map onto real Wave operations. Claude picks the right tools and calls them with the right arguments based on your conversation.
+It works by giving Claude a set of 57 structured tools that map onto real Wave operations. Claude picks the right tools and calls them with the right arguments based on your conversation.
 
 > **What's "MCP"?** [Model Context Protocol](https://modelcontextprotocol.io) is a standard way for AI assistants to call external tools. Anthropic's Claude apps speak it natively; so do Cursor, Continue, and a growing list of others.
 
@@ -27,6 +27,7 @@ Once it's installed, you can ask Claude to:
 - List or look up products & services (the line items you put on invoices)
 - Pull the full details of a single invoice or estimate (line items, payments, taxes, etc.)
 - List your chart of accounts
+- List and look up recurring invoices (read only: Wave can't delete one, so this doesn't create them)
 - List your sales taxes (HST, GST and so on), with the tax ids invoices and estimates need
 - Run reports: profit and loss, balance sheet, cash flow, trial balance, sales tax, income by customer, purchases by vendor, account balances, and aged receivables and payables, on an accrual or cash basis
 - Answers are trimmed to what matters (names, dates, amounts, statuses and the ids other tools need); ask for the "raw" invoice if you ever need Wave's full record

@@ -760,3 +760,65 @@ export function shapeTag(v: unknown): TagSummary {
   const t = obj(v) ?? {};
   return { id: str(t['id']), name: str(t['name']), description: str(t['description']), archived: bool(t['archived']), group: str(obj(t['group'])?.['name']) };
 }
+
+export interface RecurringInvoiceLine { productId: number | null; name: string | null; description: string | null; quantity: number | null; price: number | null; taxes: unknown[] }
+export interface RecurringInvoiceSummary {
+  id: string | null;
+  state: string | null;
+  customerId: number | null;
+  currency: string | null;
+  total: number | null;
+  paymentTerms: string | null;
+  firstInvoiceDate: string | null;
+  previousInvoiceDate: string | null;
+  nextInvoiceDate: string | null;
+  invoicesGenerated: number | null;
+  dateAdded: string | null;
+  canEdit: boolean | null;
+}
+export interface RecurringInvoiceDetail extends RecurringInvoiceSummary {
+  notes: string | null;
+  footer: string | null;
+  subheading: string | null;
+  purchaseOrderId: string | null;
+  lineItems: RecurringInvoiceLine[];
+  /** Passed through as Wave sends them: their fields vary with the schedule and delivery chosen. */
+  schedule: Record<string, unknown> | null;
+  delivery: Record<string, unknown> | null;
+}
+
+export function shapeRecurringInvoice(v: unknown): RecurringInvoiceSummary {
+  const r = obj(v) ?? {};
+  const customer = idString(obj(r['customer'])?.['id']);
+  return {
+    id: idString(r['id']),
+    state: str(r['state']),
+    customerId: customer === null ? null : num(Number(customer)),
+    currency: str(r['currency_code']),
+    total: num(r['total']),
+    paymentTerms: str(r['payment_terms']),
+    firstInvoiceDate: str(r['first_invoice_date']),
+    previousInvoiceDate: str(r['previous_invoice_date']),
+    nextInvoiceDate: str(r['next_invoice_date']),
+    invoicesGenerated: num(r['num_generated_to_date']),
+    dateAdded: str(r['date_added']),
+    canEdit: bool(r['can_edit']),
+  };
+}
+
+export function shapeRecurringInvoiceDetail(v: unknown): RecurringInvoiceDetail {
+  const r = obj(v) ?? {};
+  return {
+    ...shapeRecurringInvoice(v),
+    notes: str(r['notes']),
+    footer: str(r['footer']),
+    subheading: str(r['subheading']),
+    purchaseOrderId: str(r['purchase_order_id']),
+    lineItems: arr(r['line_items']).map((l) => {
+      const li = obj(l) ?? {};
+      return { productId: num(li['product_id']), name: str(li['name']), description: str(li['description']), quantity: num(li['quantity']), price: num(li['price']), taxes: arr(li['taxes']) };
+    }),
+    schedule: obj(r['schedule_settings']),
+    delivery: obj(r['delivery_settings']),
+  };
+}
