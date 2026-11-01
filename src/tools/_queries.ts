@@ -391,8 +391,8 @@ export const TRANSACTIONS_QUERY = `query GetTransactions($businessId: ID!, $filt
   }
 }`;
 
-// Operations below are written for this server rather than captured: Wave runs any document
-// that validates against its schema (checked 2026-11-01), and `npm run test:live` re-validates them.
+// Everything above was captured verbatim and stays that way. The operations below are the
+// exception: written for this server (Wave runs any document that validates), re-checked by `npm run test:live`.
 
 export const SALES_TAXES_QUERY = `query ListSalesTaxes($businessId: ID!, $page: Int!, $pageSize: Int!, $isArchived: Boolean) {
   business(id: $businessId) {
