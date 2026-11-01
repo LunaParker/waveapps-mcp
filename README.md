@@ -13,7 +13,7 @@ This is an add-on that lets you ask **Claude** (or any other AI assistant that s
 
 …and Claude creates the invoice in Wave for you. Same for recording payments, adding customers, looking up old estimates, and so on.
 
-It works by giving Claude a set of 23 structured tools that map onto real Wave operations. Claude picks the right tools and calls them with the right arguments based on your conversation.
+It works by giving Claude a set of 28 structured tools that map onto real Wave operations. Claude picks the right tools and calls them with the right arguments based on your conversation.
 
 > **What's "MCP"?** [Model Context Protocol](https://modelcontextprotocol.io) is a standard way for AI assistants to call external tools. Anthropic's Claude apps speak it natively; so do Cursor, Continue, and a growing list of others.
 
@@ -23,15 +23,16 @@ Once it's installed, you can ask Claude to:
 
 **Look things up**
 - List your Wave workspaces (businesses)
-- List or search invoices, customers, estimates, bills, receipts
+- List invoices, estimates, bills and receipts; list or search customers by name or email
 - List or look up products & services (the line items you put on invoices)
 - Pull the full details of a single invoice (line items, payments, taxes, etc.)
 - List your chart of accounts
+- Answers are trimmed to what matters (names, dates, amounts, statuses and the ids other tools need); ask for the "raw" invoice if you ever need Wave's full record
 
 **Create + edit things**
 - Add a new customer
 - Add, edit, archive, or delete a product/service
-- Draft, edit, approve, send, mark-as-sent, or delete an invoice
+- Draft, edit (one field at a time if you like), approve, send, mark-as-sent, or delete an invoice; new invoices follow your workspace's currency, payment terms, column headings, footer and memo unless you say otherwise
 - Record or remove a payment against an invoice
 - Draft, edit, or delete an estimate
 
@@ -187,6 +188,23 @@ claude mcp add waveapps -- node /absolute/path/to/waveapps-mcp/dist/server.js
 
 Then start a Claude Code session. The Wave tools become available automatically.
 
+## Configuration
+
+Nothing in this project reads a `.env` file. Set these in your shell, or in the `env` block of the MCP client's config entry for `waveapps`. Everything is optional once you have signed in.
+
+| Variable | What it does |
+| --- | --- |
+| `WAVE_AUTH_TOKEN` / `WAVE_CSRF_TOKEN` | Use these session cookie values instead of the stored credentials file. The CSRF token is only needed for tools that change things. |
+| `WAVE_BUSINESS_ID` | Default business UUID when you have more than one. Tools also accept `businessId` per call. |
+| `WAVE_MCP_CONFIG_DIR` | Where `credentials.json` and the sign-in browser profile live. Default `~/.config/waveapps-mcp`. |
+| `WAVE_MCP_BROWSER_PATH` | A Chromium-based browser to use for sign-in instead of Playwright's. |
+| `WAVE_MCP_LOG_LEVEL` | `debug`, `info` (default), `warn` or `error`. Logs go to stderr. |
+| `WAVE_MCP_TRANSPORT` | `stdio` (default) or `http`. |
+| `WAVE_MCP_BIND` / `WAVE_MCP_PORT` | Where the HTTP transport listens. Default `127.0.0.1:8765`. |
+| `WAVE_MCP_HTTP_TOKEN` | Bearer token HTTP clients must send. Required when `WAVE_MCP_BIND` is not a loopback address, because anyone who can reach the port can otherwise act in your Wave account. |
+
+With the HTTP transport, loopback listeners also refuse requests whose `Host` header isn't `localhost`, `127.0.0.1` or `[::1]`, which blocks DNS-rebinding attacks from web pages.
+
 ## Try it
 
 Once wired up, try asking Claude:
@@ -210,6 +228,8 @@ Claude will figure out which tools to call. If it doesn't have enough info (e.g.
 | Tools error with "CSRF token configured" | You skipped the CSRF cookie when pasting. Re-run `npx waveapps-mcp paste` and provide it this time. |
 | Claude tries to use a tool but says it can't find your business | Either pass `businessId` explicitly in your message, or re-run `paste` and provide the business UUID. |
 | Automatic sign-in fails | Run `npx waveapps-mcp refresh --headed` to watch where it stops. Common causes: password changed, 2FA enabled (run `save-password` again with the TOTP secret), or Wave is rate-limiting from your IP. |
+| A tool says "Wave rejected ..." | Wave refused the change and the message says why (for example a sender address Wave hasn't verified, or an invoice that isn't approved yet). Fix the input and try again. |
+| "Unauthorized: send the WAVE_MCP_HTTP_TOKEN as a bearer token" | You set `WAVE_MCP_HTTP_TOKEN`; the client must send it as `Authorization: Bearer <token>`. |
 | Want to wipe everything | `npx waveapps-mcp logout` removes the credentials file and the credential-store entries. |
 
 ## Important caveats
@@ -231,6 +251,7 @@ Brief pointers if you want to hack on this:
 
 - Source layout, API map, and captured GraphQL operations live in `docs/` locally, gitignored on purpose so the reverse-engineering reference doesn't get committed to a public mirror.
 - Run the test suite: `npm test` (or `npm run test:coverage` for an HTML coverage report in `coverage/`). It's fully mocked and never touches Wave.
+- Tool results go through the shapers in `src/tools/_shape.ts`, pure functions that keep the fields the model needs, cut nested accounts and sales taxes down to a few fields, and drop Wave's resource URLs and layout flags. Add a field there, with a test, rather than returning a raw payload.
 - Check the tools still match Wave's undocumented API: `npm run test:live`. No session needed: every tool runs with a bogus token, so Wave rejects it at auth, but only after confirming the REST route exists and the GraphQL query, input fields and enum values still fit its schema.
 - Add read-only checks against your own account with `npm run test:live:signed-in` (or set `WAVE_LIVE_SIGNED_IN=1`). Uses your stored session and never signs in for you; if it has expired, the run stops with one "sign in again" error.
 - Smoke-test against a live Wave account: `WAVE_AUTH_TOKEN=... npm run smoke`

@@ -57,7 +57,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Create a Wave product or service',
       description:
-        'Creates a new product/service via `POST /businesses/{id}/products/`. The minimum required fields are `name`, `price`, and (for sellable items) an `incomeAccountId` from `wave_list_accounts`. Returns the product; its `id` is what invoice and estimate lines take as `productId`.',
+        'Creates a product or service. `name` and `price` are required, and a sellable item needs an `incomeAccountId` (an `account_type: "income"` account from wave_list_accounts). Returns the product; its `id` is what invoice and estimate lines take as `productId`.',
       inputSchema: {
         businessId: z.uuid().optional(),
         name: z.string().min(1),
@@ -106,7 +106,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Update a Wave product',
       description:
-        'Patches a product via `PATCH /businesses/{id}/products/{productId}/`. Only the fields you supply are changed — existing values are preserved. Useful for bumping the price of a recurring service or fixing a typo.',
+        'Changes a product. Only the fields you pass change; the rest keep their values. Useful for a price change on a recurring service or a typo fix. Pass `active: false` to archive a product you no longer sell.',
       inputSchema: {
         businessId: z.uuid().optional(),
         productId: z.number().int().positive(),
@@ -149,7 +149,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Delete a Wave product',
       description:
-        'Deletes a product via `DELETE /businesses/{id}/products/{productId}/`. Returns 204 on success. Wave preserves historical line items that referenced this product on past invoices — they stay readable, but new invoices won\'t be able to use it. Consider archiving (`wave_update_product` with `active: false`) instead of deleting.',
+        'Deletes a product. Past invoices that used it stay readable, but new invoices cannot use it. Prefer archiving (wave_update_product with `active: false`) unless the product was created by mistake, and confirm with the user first.',
       inputSchema: {
         businessId: z.uuid().optional(),
         productId: z.number().int().positive(),

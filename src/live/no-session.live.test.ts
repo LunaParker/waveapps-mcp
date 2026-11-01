@@ -25,20 +25,47 @@ const ESTIMATE_ITEM = {
 };
 
 // One call per tool, with arguments that exercise every optional input the tool forwards.
+// Write tools that would read first (invoice defaults, partial updates, the next estimate
+// number) get every field here, so the write route itself is what Wave rejects.
 const CALLS: Record<string, Record<string, unknown>> = {
   wave_list_businesses: {},
   wave_get_business: {},
   wave_list_invoices: { status: 'unpaid' },
   wave_get_invoice: { invoiceId: '1' },
   wave_get_invoice_settings: {},
-  wave_create_invoice: { customerId: 1, items: [INVOICE_ITEM] },
+  wave_create_invoice: {
+    customerId: 1,
+    items: [INVOICE_ITEM],
+    currency: 'CAD',
+    dueDate: '2026-01-16',
+    memo: '',
+    footer: '',
+    subhead: '',
+    itemTitle: 'Items',
+    quantityTitle: 'Quantity',
+    priceTitle: 'Price',
+    amountTitle: 'Amount',
+    invoiceNumberLabel: 'Invoice',
+  },
   wave_update_invoice: {
     invoiceId: '1',
     customerId: 1,
     items: [INVOICE_ITEM],
+    status: 'saved',
     invoiceNumber: '1',
+    poSoNumber: '',
     invoiceDate: '2026-01-01',
     dueDate: '2026-01-16',
+    currency: 'CAD',
+    exchangeRate: '1.0000000000',
+    memo: '',
+    footer: '',
+    subhead: '',
+    itemTitle: 'Items',
+    quantityTitle: 'Quantity',
+    priceTitle: 'Price',
+    amountTitle: 'Amount',
+    invoiceNumberLabel: 'Invoice',
   },
   wave_approve_invoice: { invoiceId: '1' },
   wave_mark_invoice_sent: { invoiceId: '1' },
@@ -63,12 +90,19 @@ const CALLS: Record<string, Record<string, unknown>> = {
   wave_delete_customer: { customerId: 1 },
   wave_list_estimates: {
     customerId: Buffer.from(`Business:${BUSINESS};Customer:1`).toString('base64'),
-    allStatus: 'ACTIVE',
+    status: 'ACTIVE',
     estimateDateStart: '2026-01-01',
     estimateDateEnd: '2026-12-31',
     estimateNumber: '1',
   },
-  wave_create_estimate: { customerId: 1, items: [ESTIMATE_ITEM], estimateDate: '2026-01-01', dueDate: '2026-01-31' },
+  wave_create_estimate: {
+    customerId: 1,
+    items: [ESTIMATE_ITEM],
+    estimateNumber: '1',
+    currency: 'CAD',
+    estimateDate: '2026-01-01',
+    dueDate: '2026-01-31',
+  },
   wave_update_estimate: {
     estimateGlobalId: RELAY_ID,
     customerId: 1,
@@ -101,7 +135,7 @@ const UNTAXED_ESTIMATE = {
 };
 const GRAPHQL_ENUM_INPUTS: ReadonlyArray<[tool: string, field: string, base: Record<string, unknown>]> = [
   ['wave_list_estimates', 'sort', {}],
-  ['wave_list_estimates', 'allStatus', {}],
+  ['wave_list_estimates', 'status', {}],
   ['wave_list_bills', 'sort', {}],
   ['wave_list_receipts', 'sort', {}],
   ['wave_update_estimate', 'status', UNTAXED_ESTIMATE],
