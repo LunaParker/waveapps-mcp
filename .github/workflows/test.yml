@@ -1,6 +1,6 @@
 name: Test
 
-# Pipeline 1 of 2 — typecheck + vitest suite. Runs on every push/PR.
+# Pipeline 1 of 2: typecheck + vitest suite, and the gateway's pytest suite. Runs on every push/PR.
 # All vitest tests are written against mocked fetch, stubbed browser drivers and an
 # in-memory credential store, so no production Wave credentials or keychains are
 # touched here. The Build workflow (pipeline 2) is chained off this one and only runs
@@ -49,3 +49,32 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  gateway:
+    name: Gateway, Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.12', '3.14']
+    defaults:
+      run:
+        working-directory: gateway
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pinned to a release at least two weeks old (repo rule); python-version overrides gateway/.python-version.
+      - name: Set up uv and Python ${{ matrix.python }}
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-dependency-glob: gateway/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run tests
+        run: uv run pytest
