@@ -200,6 +200,7 @@ Nothing in this project reads a `.env` file. Set these in your shell, or in the 
 | `WAVE_MCP_CONFIG_DIR` | Where `credentials.json` and the sign-in browser profile live. Default `~/.config/waveapps-mcp`. |
 | `WAVE_MCP_BROWSER_PATH` | A Chromium-based browser to use for sign-in instead of Playwright's. |
 | `WAVE_MCP_LOG_LEVEL` | `debug`, `info` (default), `warn` or `error`. Logs go to stderr. |
+| `WAVE_LIVE_SIGNED_IN` / `WAVE_LIVE_WRITES` / `WAVE_LIVE_TEST_CUSTOMER_ID` | Development only, for the live contract tests: `1` turns on the signed-in read checks or the real write checks (`npm run test:live:signed-in` and `npm run test:live:writes` set them for you), and the customer id names the throwaway test customer the write checks may create, change, email and delete records for. |
 | `WAVE_MCP_TRANSPORT` | `stdio` (default) or `http`. |
 | `WAVE_MCP_BIND` / `WAVE_MCP_PORT` | Where the HTTP transport listens. Default `127.0.0.1:8765`. |
 | `WAVE_MCP_HTTP_TOKEN` | Bearer token HTTP clients must send. Required when `WAVE_MCP_BIND` is not a loopback address, because anyone who can reach the port can otherwise act in your Wave account. |
