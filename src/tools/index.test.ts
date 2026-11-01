@@ -9,7 +9,10 @@ describe('registerAllTools', () => {
     registerAllTools(stub.server as never, mock.client);
     const names = [...stub.handlers.keys()].sort();
     expect(names).toEqual([
+      'wave_accept_estimate',
+      'wave_approve_estimate',
       'wave_approve_invoice',
+      'wave_convert_estimate_to_invoice',
       'wave_create_customer',
       'wave_create_estimate',
       'wave_create_invoice',
@@ -19,7 +22,10 @@ describe('registerAllTools', () => {
       'wave_delete_invoice',
       'wave_delete_invoice_payment',
       'wave_delete_product',
+      'wave_duplicate_estimate',
       'wave_get_business',
+      'wave_get_estimate',
+      'wave_get_estimate_pdf',
       'wave_get_invoice',
       'wave_get_invoice_settings',
       'wave_get_product',
@@ -32,13 +38,26 @@ describe('registerAllTools', () => {
       'wave_list_products',
       'wave_list_receipts',
       'wave_list_sales_taxes',
+      'wave_mark_estimate_sent',
       'wave_mark_invoice_sent',
       'wave_record_invoice_payment',
+      'wave_reset_estimate_acceptance',
+      'wave_send_estimate',
       'wave_send_invoice',
       'wave_update_estimate',
       'wave_update_invoice',
       'wave_update_product',
     ]);
-    expect(names).toHaveLength(29);
+    expect(names).toHaveLength(38);
+  });
+
+  it('marks every tool that emails someone as destructive, so clients ask before it runs', () => {
+    const stub = createStubServer();
+    registerAllTools(stub.server as never, createMockClient().client);
+    const senders = [...stub.configs.entries()].filter(([name]) => name.startsWith('wave_send_'));
+    expect(senders.length).toBeGreaterThan(0);
+    for (const [name, config] of senders) {
+      expect((config as { annotations?: { destructiveHint?: boolean } }).annotations?.destructiveHint, name).toBe(true);
+    }
   });
 });

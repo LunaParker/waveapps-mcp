@@ -156,6 +156,41 @@ export interface EstimateSummary {
   depositPaymentStatus: string | null;
 }
 
+export interface EstimateItem {
+  id: string | null;
+  productId: number | null;
+  name: string | null;
+  description: string | null;
+  quantity: string | number | null;
+  unitPrice: string | number | null;
+  incomeAccountClassicId: string | null;
+  incomeAccountName: string | null;
+  subtotal: string | number | null;
+  total: string | number | null;
+  taxes: Array<{ salesTaxId: number | null; name: string | null; abbreviation: string | null; rate: number | null; amount: string | number | null }>;
+}
+
+export interface EstimateDetail extends EstimateSummary {
+  title: string | null;
+  subhead: string | null;
+  poNumber: string | null;
+  memo: string | null;
+  footer: string | null;
+  itemTitle: string | null;
+  unitTitle: string | null;
+  priceTitle: string | null;
+  amountTitle: string | null;
+  items: EstimateItem[];
+  subtotal: string | number | null;
+  discountTotal: string | number | null;
+  taxTotal: string | number | null;
+  createdAt: string | null;
+  lastViewedAt: string | null;
+  dontCarryOverNotesToInvoice: boolean | null;
+  disableCreditCardPayments: boolean | null;
+  disableAmexPayments: boolean | null;
+}
+
 export interface BillSummary {
   id: string | null;
   billNumber: string | null;
@@ -443,6 +478,71 @@ export function shapeEstimate(v: unknown): EstimateSummary {
     depositValue: scalar(e['depositValue']),
     depositUnit: str(e['depositUnit']),
     depositPaymentStatus: str(e['depositPaymentStatus']),
+  };
+}
+
+function shapeEstimateItem(v: unknown): EstimateItem {
+  const it = obj(v) ?? {};
+  const product = obj(it['product']);
+  const account = obj(it['account']);
+  const internal = decodeInternalId(str(product?.['id']));
+  return {
+    id: str(it['id']),
+    productId: internal === null ? null : num(Number(internal)),
+    name: str(product?.['name']),
+    description: str(it['description']),
+    quantity: scalar(it['quantity']),
+    unitPrice: scalar(it['unitPrice']),
+    incomeAccountClassicId: idString(account?.['classicId']),
+    incomeAccountName: str(account?.['name']),
+    subtotal: scalar(obj(it['subtotal'])?.['value']),
+    total: scalar(obj(it['total'])?.['value']),
+    taxes: arr(it['taxes']).map((t) => {
+      const tax = obj(obj(t)?.['salesTax']);
+      const taxId = decodeInternalId(str(tax?.['id']));
+      return {
+        salesTaxId: taxId === null ? null : num(Number(taxId)),
+        name: str(tax?.['name']),
+        abbreviation: str(tax?.['abbreviation']),
+        rate: decimal(tax?.['rate']),
+        amount: scalar(obj(obj(t)?.['amount'])?.['value']),
+      };
+    }),
+  };
+}
+
+export interface EstimateRef { id: string | null; internalId: string | null; estimateNumber: string | null; status: string | null }
+
+/** The small estimate record lifecycle mutations return. */
+export function shapeEstimateRef(v: unknown): EstimateRef | null {
+  const e = obj(v);
+  if (!e) return null;
+  const id = str(e['id']);
+  return { id, internalId: decodeInternalId(id), estimateNumber: str(e['estimateNumber']), status: str(e['status']) };
+}
+
+export function shapeEstimateDetail(v: unknown): EstimateDetail {
+  const e = obj(v) ?? {};
+  return {
+    ...shapeEstimate(v),
+    title: str(e['title']),
+    subhead: str(e['subhead']),
+    poNumber: str(e['poNumber']),
+    memo: str(e['memo']),
+    footer: str(e['footer']),
+    itemTitle: str(e['itemTitle']),
+    unitTitle: str(e['unitTitle']),
+    priceTitle: str(e['priceTitle']),
+    amountTitle: str(e['amountTitle']),
+    items: arr(e['items']).map(shapeEstimateItem),
+    subtotal: scalar(obj(e['subtotal'])?.['value']),
+    discountTotal: scalar(obj(e['discountTotal'])?.['value']),
+    taxTotal: scalar(obj(e['taxTotal'])?.['value']),
+    createdAt: str(e['createdAt']),
+    lastViewedAt: str(e['lastViewedAt']),
+    dontCarryOverNotesToInvoice: bool(e['dontCarryOverNotesToInvoice']),
+    disableCreditCardPayments: bool(e['disableCreditCardPayments']),
+    disableAmexPayments: bool(e['disableAmexPayments']),
   };
 }
 
