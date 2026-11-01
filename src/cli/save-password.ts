@@ -90,7 +90,7 @@ async function askEmail(io: PromptIo, current: string | undefined): Promise<stri
 async function saveEmailOnly(io: PromptIo, log: Say, err: Say): Promise<number> {
   const existing = readCredentials();
   if (!existing) {
-    err(`[waveapps-mcp] No credentials.json yet — run \`${cliCommand('login')}\` once first.`);
+    err(`[waveapps-mcp] No credentials.json yet. Run \`${cliCommand('refresh')}\` instead: it signs in with those files and asks for your email (or set WAVE_EMAIL).`);
     return SAVE_PW_EXIT_NO_INPUT;
   }
   log(`[waveapps-mcp] The password and TOTP secret come from ${SECRET_FILE_VARS.password} and ${SECRET_FILE_VARS['totp-secret']}; only the email is saved here.`);

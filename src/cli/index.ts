@@ -16,8 +16,9 @@ const HELP = `waveapps-mcp — Model Context Protocol server for Wave
 
 Subcommands:
   login           Open a browser window on Wave's sign-in. You sign in (CAPTCHA, 2FA); the session is saved.
-  refresh         Sign in headlessly with the stored email, password and TOTP secret, as the server does
-                  when the session expires. Add --headed to watch it in a window.
+  refresh         Sign in headlessly with the stored email (or WAVE_EMAIL), password and TOTP secret, as the
+                  server does when the session expires. Asks for the email if none is on file.
+                  Add --headed to watch it in a window.
   paste           Paste cookie values from a logged-in browser. Fallback if login can't open a browser.
   save-password   Store email (credentials.json) + password and optional TOTP secret (OS credential store)
                   so the server can sign back in on its own. Add -y / --yes to skip the disclaimer.

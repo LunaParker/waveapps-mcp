@@ -14,11 +14,20 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   delete process.env['WAVE_MCP_CONFIG_DIR'];
   rmSync(tmp, { recursive: true, force: true });
 });
 
 describe('runWhoami', () => {
+  it('shows WAVE_EMAIL as the sign-in email and says where it comes from', () => {
+    writeCredentials({ authToken: 'EXAMPLE_FAKE_WAVE_TOKEN_30CHRSAB', csrfToken: undefined, businessId: undefined, email: 'stored@example.com' });
+    vi.stubEnv('WAVE_EMAIL', 'env@example.com');
+    const log = vi.fn();
+    runWhoami({ console: { log }, store: memorySecretStore() });
+    expect(log.mock.calls.flat().join('\n')).toMatch(/email:\s+env@example\.com \(from WAVE_EMAIL\)/);
+  });
+
   it('exits 1 with a hint when no credentials exist', () => {
     const log = vi.fn();
     expect(runWhoami({ console: { log } })).toBe(1);

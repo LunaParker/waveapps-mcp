@@ -203,6 +203,7 @@ Nothing in this project reads a `.env` file. Set these in your shell, or in the 
 | --- | --- |
 | `WAVE_AUTH_TOKEN` / `WAVE_CSRF_TOKEN` | Use these session cookie values instead of the stored credentials file. The CSRF token is only needed for tools that change things. |
 | `WAVE_BUSINESS_ID` | Default business UUID when you have more than one. Tools also accept `businessId` per call. |
+| `WAVE_EMAIL` | The Wave email automatic sign-in uses, instead of the one in `credentials.json`. Handy on a server or in a container, where nobody is there to type it. |
 | `WAVE_MCP_CONFIG_DIR` | Where `credentials.json` and the sign-in browser profile live. Default `~/.config/waveapps-mcp`. |
 | `WAVE_MCP_BROWSER_PATH` | A Chromium-based browser to use for sign-in instead of Playwright's. |
 | `WAVE_MCP_LOG_LEVEL` | `debug`, `info` (default), `warn` or `error`. Logs go to stderr. |
@@ -211,7 +212,7 @@ Nothing in this project reads a `.env` file. Set these in your shell, or in the 
 | `WAVE_MCP_BIND` / `WAVE_MCP_PORT` | Where the HTTP transport listens. Default `127.0.0.1:8765`. |
 | `WAVE_MCP_HTTP_TOKEN` | Bearer token HTTP clients must send. Required when `WAVE_MCP_BIND` is not a loopback address, because anyone who can reach the port can otherwise act in your Wave account. |
 | `WAVE_MCP_HTTP_TOKEN_FILE` | A file holding the bearer token, instead of `WAVE_MCP_HTTP_TOKEN` (set one or the other). Read once at startup. |
-| `WAVE_PASSWORD_FILE` / `WAVE_TOTP_SECRET_FILE` | Files holding the Wave password and TOTP secret, for machines without an OS credential store. When either is set, the server reads secrets only from these files (on every use, so you can replace them without a restart), `save-password` records just your email, and `logout` leaves the files alone. Keep them `chmod 600`. |
+| `WAVE_PASSWORD_FILE` / `WAVE_TOTP_SECRET_FILE` | Files holding the Wave password and TOTP secret, for machines without an OS credential store. When either is set, the server reads secrets only from these files (on every use, so you can replace them without a restart), `save-password` records just your email (the first `refresh` does that on a new machine), and `logout` leaves the files alone. Keep them `chmod 600`. |
 
 With the HTTP transport, loopback listeners also refuse requests whose `Host` header names anything other than a loopback address (`localhost`, `127.x.x.x` or `::1`, on any port), which blocks DNS-rebinding attacks from web pages.
 
@@ -242,7 +243,7 @@ The gateway only listens on loopback. Giving it a public HTTPS address (Tailscal
    WAVE_MCP_TRANSPORT=http WAVE_MCP_HTTP_TOKEN_FILE="$HOME/.config/waveapps-mcp-gateway/http-token" node dist/server.js
    ```
 
-   On a machine without an OS credential store, also set `WAVE_PASSWORD_FILE` and `WAVE_TOTP_SECRET_FILE` (see the table above), and run `npx waveapps-mcp save-password` once to record your email.
+   On a machine without an OS credential store, also set `WAVE_PASSWORD_FILE` and `WAVE_TOTP_SECRET_FILE` (see the table above). The server needs a first session before it starts: run `node dist/server.js refresh` once with the same variables. It asks for your Wave email the first time (or set `WAVE_EMAIL`), signs in headless and saves both.
 
 4. **Run the gateway.** It needs [uv](https://docs.astral.sh/uv/):
 

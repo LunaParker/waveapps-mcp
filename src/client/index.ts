@@ -4,7 +4,7 @@ import { WaveRestClient, type WaveAuthRefresher } from './rest.js';
 import { assertUuid, toGlobalId } from './ids.js';
 import { WaveAuthError } from './errors.js';
 import { optionalEnv } from '../util/env.js';
-import { migrateLegacySecrets, patchCredentials, readCredentials } from '../auth/credentials.js';
+import { migrateLegacySecrets, patchCredentials, readCredentials, signInEmail } from '../auth/credentials.js';
 import { withProfileLock } from '../auth/profile-lock.js';
 import { refreshSession } from '../auth/refresh-session.js';
 import { secretStore, type SecretStore } from '../auth/secrets.js';
@@ -100,7 +100,7 @@ export class WaveClient {
  * The default refresher. It first picks up a session another process saved since this one
  * last looked (`npx waveapps-mcp login`, or another server's sign-in), so a manual sign-in
  * works without restarting the client. Otherwise it signs in with Playwright, if an email is
- * on file and a password is in the store; secrets are read per refresh, never cached.
+ * on file (or in WAVE_EMAIL) and a password is in the store; secrets are read per refresh, never cached.
  */
 function buildDefaultRefresher(
   stored: ReturnType<typeof readCredentials>,
@@ -114,7 +114,7 @@ function buildDefaultRefresher(
         lastSeenOnDisk = onDisk.authToken;
         return { authToken: onDisk.authToken, csrfToken: onDisk.csrfToken };
       }
-      const email = onDisk?.email;
+      const email = signInEmail(onDisk);
       const password = email ? readSecret(store, 'password') : null;
       if (!email || !password) throw new WaveAuthError();
       const totpSecret = readSecret(store, 'totp-secret') ?? undefined;

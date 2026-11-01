@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { secretStore, type SecretName, type SecretStore } from './secrets.js';
 import { cliCommand } from '../util/cli-command.js';
+import { optionalEnv } from '../util/env.js';
 
 /**
  * What lives in credentials.json. The password and TOTP secret do not: they sit in the OS
@@ -45,6 +46,11 @@ function readRaw(): Record<string, unknown> | null {
     if (isNotFound(err)) return null;
     throw new Error(`Failed to read Wave credentials at ${path}: ${(err as Error).message}`);
   }
+}
+
+/** The email automatic sign-in uses: `WAVE_EMAIL` when set, like the other WAVE_* overrides, else the stored one. */
+export function signInEmail(creds: StoredCredentials | null = readCredentials()): string | undefined {
+  return optionalEnv('WAVE_EMAIL') ?? creds?.email;
 }
 
 export function readCredentials(): StoredCredentials | null {

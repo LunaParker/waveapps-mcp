@@ -1,6 +1,7 @@
-import { credentialsAgeSeconds, credentialsPath, readCredentials } from '../auth/credentials.js';
+import { credentialsAgeSeconds, credentialsPath, readCredentials, signInEmail } from '../auth/credentials.js';
 import { secretStore, type SecretName, type SecretStore } from '../auth/secrets.js';
 import { cliCommand } from '../util/cli-command.js';
+import { optionalEnv } from '../util/env.js';
 
 export interface RunWhoamiDeps {
   console?: Pick<Console, 'log'>;
@@ -21,7 +22,7 @@ export function runWhoami(deps: RunWhoamiDeps = {}): number {
   log(`  authToken:  ${maskToken(creds.authToken)}`);
   log(`  csrfToken:  ${creds.csrfToken ? maskToken(creds.csrfToken) : '(none — mutations will fail)'}`);
   log(`  businessId: ${creds.businessId ?? '(none — pass to each tool)'}`);
-  log(`  email:      ${creds.email ?? '(none)'}`);
+  log(`  email:      ${signInEmail(creds) ?? '(none)'}${optionalEnv('WAVE_EMAIL') ? ' (from WAVE_EMAIL)' : ''}`);
   const password = describeSecret(store, 'password');
   const totpSecret = describeSecret(store, 'totp-secret');
   const where = (name: SecretName): string => store.source?.(name) ?? 'in OS credential store';

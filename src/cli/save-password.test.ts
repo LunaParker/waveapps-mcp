@@ -269,10 +269,16 @@ describe('runSavePassword', () => {
       expect(out).not.toMatch(/INSECURE/);
     });
 
-    it('still needs credentials.json first', async () => {
+    it('sends a fresh host to refresh or WAVE_EMAIL rather than login', async () => {
       const io = scriptedIo([], []);
-      const code = await runSavePassword({ io, console: silent, store: fileSecretStore({}) });
+      const err = vi.fn();
+      const code = await runSavePassword({ io, console: { log: vi.fn(), error: err }, store: fileSecretStore({}) });
       expect(code).toBe(SAVE_PW_EXIT_NO_INPUT);
+      const out = err.mock.calls.flat().join('\n');
+      expect(out).toMatch(/waveapps-mcp refresh/);
+      expect(out).toMatch(/WAVE_EMAIL/);
+      expect(out).not.toMatch(/login/);
+      expect(io.askLog).toEqual([]);
     });
   });
 });
