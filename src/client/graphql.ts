@@ -13,8 +13,14 @@ export interface GraphQLOperation<TVars> {
 
 interface GraphQLResponse<TData> {
   data?: TData;
-  errors?: ReadonlyArray<{ message: string; extensions?: unknown; path?: ReadonlyArray<string | number> }>;
+  errors?: ReadonlyArray<{
+    message: string;
+    extensions?: { code?: string };
+    path?: ReadonlyArray<string | number>;
+  }>;
 }
+
+type Attempt<TData> = { authRejected: true } | { authRejected: false; data: TData };
 
 export class WaveGraphQLClient {
   private readonly getAuth: () => WaveAuth;
@@ -26,16 +32,19 @@ export class WaveGraphQLClient {
   }
 
   async execute<TData, TVars = Record<string, unknown>>(op: GraphQLOperation<TVars>): Promise<TData> {
-    const res = await this.fetchOnce(op);
-    if (res.status === 401 || res.status === 403) {
-      if (this.refresher && (await this.refresher())) {
-        const retry = await this.fetchOnce(op);
-        if (retry.status === 401 || retry.status === 403) throw new WaveAuthError();
-        return this.parsePayload(retry, op);
-      }
-      throw new WaveAuthError();
+    const first = await this.attempt<TData, TVars>(op);
+    if (!first.authRejected) return first.data;
+    if (this.refresher && (await this.refresher())) {
+      const retry = await this.attempt<TData, TVars>(op);
+      if (!retry.authRejected) return retry.data;
     }
-    return this.parsePayload(res, op);
+    throw new WaveAuthError();
+  }
+
+  private async attempt<TData, TVars>(op: GraphQLOperation<TVars>): Promise<Attempt<TData>> {
+    const res = await this.fetchOnce(op);
+    if (res.status === 401 || res.status === 403) return { authRejected: true };
+    return this.parsePayload<TData, TVars>(res, op);
   }
 
   private async fetchOnce<TVars>(op: GraphQLOperation<TVars>): Promise<Response> {
@@ -57,14 +66,18 @@ export class WaveGraphQLClient {
     return res;
   }
 
-  private async parsePayload<TData, TVars>(res: Response, op: GraphQLOperation<TVars>): Promise<TData> {
-    if (!res.ok) {
-      const errBody = await safeText(res);
-      throw new WaveApiError({ status: res.status, url: GQL_ENDPOINT, body: errBody });
+  private async parsePayload<TData, TVars>(res: Response, op: GraphQLOperation<TVars>): Promise<Attempt<TData>> {
+    const text = await safeText(res);
+    const payload = parseJson(text) as GraphQLResponse<TData> | undefined;
+    const errors = payload?.errors ?? [];
+    // An expired session comes back as HTTP 200 with an UNAUTHENTICATED error, not a 401.
+    if (errors.some((e) => e.extensions?.code === 'UNAUTHENTICATED')) return { authRejected: true };
+    // Schema drift (unknown field, renamed input or enum) is a 400 that still carries GraphQL errors.
+    if (errors.length > 0) {
+      throw new WaveGraphQLError({ operationName: op.operationName, errors });
     }
-    const payload = (await res.json()) as GraphQLResponse<TData>;
-    if (payload.errors && payload.errors.length > 0) {
-      throw new WaveGraphQLError({ operationName: op.operationName, errors: payload.errors });
+    if (!res.ok || payload === undefined) {
+      throw new WaveApiError({ status: res.status, url: GQL_ENDPOINT, body: text });
     }
     if (payload.data === undefined) {
       throw new WaveGraphQLError({
@@ -72,7 +85,7 @@ export class WaveGraphQLClient {
         errors: [{ message: 'GraphQL response had neither `data` nor `errors`.' }],
       });
     }
-    return payload.data;
+    return { authRejected: false, data: payload.data };
   }
 }
 
@@ -81,5 +94,13 @@ async function safeText(res: Response): Promise<string> {
     return await res.text();
   } catch {
     return '';
+  }
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
   }
 }

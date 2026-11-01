@@ -88,6 +88,41 @@ describe('WaveGraphQLClient', () => {
     await expect(client.execute({ operationName: 'X', query: '{}', variables: {} })).rejects.toBeInstanceOf(WaveGraphQLError);
   });
 
+  it('throws WaveAuthError when Wave answers 200 with an UNAUTHENTICATED error', async () => {
+    fetchSpy.mockResolvedValueOnce(mockResponse({
+      errors: [{ message: 'Invalid request, authentication expired.', extensions: { code: 'UNAUTHENTICATED' } }],
+      data: { business: null },
+    }));
+    await expect(client.execute({ operationName: 'X', query: '{}', variables: {} })).rejects.toBeInstanceOf(WaveAuthError);
+  });
+
+  it('surfaces Wave\'s messages as WaveGraphQLError when a 400 carries GraphQL errors', async () => {
+    fetchSpy.mockResolvedValueOnce(mockResponse(
+      {
+        errors: [{
+          message: 'Cannot query field "gone" on type "Business".',
+          extensions: { code: 'GRAPHQL_VALIDATION_FAILED' },
+        }],
+      },
+      { status: 400 },
+    ));
+    try {
+      await client.execute({ operationName: 'X', query: '{}', variables: {} });
+      expect.fail('expected throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(WaveGraphQLError);
+      if (err instanceof WaveGraphQLError) {
+        expect(err.message).toContain('Cannot query field "gone"');
+        expect(err.errors[0]?.extensions).toEqual({ code: 'GRAPHQL_VALIDATION_FAILED' });
+      }
+    }
+  });
+
+  it('throws WaveApiError when a 200 body is not JSON', async () => {
+    fetchSpy.mockResolvedValueOnce(new Response('<html>maintenance</html>', { status: 200 }));
+    await expect(client.execute({ operationName: 'X', query: '{}', variables: {} })).rejects.toBeInstanceOf(WaveApiError);
+  });
+
   describe('refresh-on-401', () => {
     it('retries once when the refresher returns true', async () => {
       const refresher = vi.fn(async () => true);
@@ -98,6 +133,18 @@ describe('WaveGraphQLClient', () => {
       expect(out).toEqual({ ok: true });
       expect(refresher).toHaveBeenCalledTimes(1);
       expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('retries once when the session comes back UNAUTHENTICATED with a 200', async () => {
+      const refresher = vi.fn(async () => true);
+      const c = new WaveGraphQLClient(AUTH, refresher);
+      fetchSpy.mockResolvedValueOnce(mockResponse({
+        errors: [{ message: 'Invalid request, authentication expired.', extensions: { code: 'UNAUTHENTICATED' } }],
+      }));
+      fetchSpy.mockResolvedValueOnce(mockResponse({ data: { ok: true } }));
+      const out = await c.execute({ operationName: 'X', query: '{}', variables: {} });
+      expect(out).toEqual({ ok: true });
+      expect(refresher).toHaveBeenCalledTimes(1);
     });
 
     it('throws WaveAuthError when refresh succeeds but the retry still 401s', async () => {
