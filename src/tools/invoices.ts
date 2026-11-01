@@ -1,72 +1,45 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { WaveClient } from '../client/index.js';
+import { requireDidSucceed } from '../client/errors.js';
 import { toCompositeGlobalId } from '../client/ids.js';
+import { addDays, todayIso } from '../util/dates.js';
 import { INVOICE_SEND_MUTATION } from './_mutations.js';
 import { jsonResult } from './_helpers.js';
+import { InvoiceItemInput, bodyArgsFromInvoice, buildInvoiceBody, hasFullState, type InvoiceBodyArgs } from './_invoice-body.js';
+import { looksLikeInvoice, shapeBusiness, shapeInvoice, shapeInvoiceSummary } from './_shape.js';
 
 const InvoiceStatus = z.enum(['draft', 'unpaid', 'paid', 'overdue', 'partial']);
-const InvoiceSort = z.enum([
-  '-invoice_date',
-  'invoice_date',
-  '-due_date',
-  'due_date',
-  '-amount_due',
-  'amount_due',
-]);
+const InvoiceSort = z.enum(['-invoice_date', 'invoice_date', '-due_date', 'due_date', '-amount_due', 'amount_due']);
+const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const Currency = z.string().length(3).toUpperCase();
+const InvoiceLifecycle = z.enum(['draft', 'saved']);
 
-const InvoiceItemInput = z.object({
-  productId: z
-    .number()
-    .int()
-    .positive()
-    .describe('Wave integer product ID. From an existing invoice (`items[].product.id`) or the legacy products UI.'),
-  name: z.string().min(1),
-  description: z.string().default(''),
-  incomeAccountId: z
-    .number()
-    .int()
-    .positive()
-    .describe('Integer income account ID. From an existing invoice (`items[].product.income_account.id`).'),
-  quantity: z.number().default(1),
-  price: z.string().regex(/^\d+(\.\d+)?$/).describe('Decimal as a string, e.g. "150.00".'),
-  taxes: z
-    .array(z.number().int().positive())
-    .default([])
-    .describe(
-      "Integer Wave sales-tax IDs to apply to this line (e.g. `[1897235638]` for HST 13%). Discover via an existing invoice's `items[].taxes[].sales_tax.id`. The MCP wraps each as `{ sales_tax: { id } }` before sending to Wave.",
-    ),
-});
+const INVOICE_EMBEDS = {
+  embed_accounts: true,
+  embed_customer: true,
+  embed_discounts: true,
+  embed_items: true,
+  embed_payments: true,
+  embed_products: true,
+  embed_sales_taxes: true,
+  embed_attachments: true,
+} as const;
 
-const CURRENCIES: Record<string, { symbol: string; name: string }> = {
-  CAD: { symbol: '$', name: 'Canadian dollar' },
-  USD: { symbol: '$', name: 'US dollar' },
-  EUR: { symbol: '€', name: 'Euro' },
-  GBP: { symbol: '£', name: 'British Pound' },
-  AUD: { symbol: '$', name: 'Australian dollar' },
+/** Presentation fields a caller may leave out; the workspace's invoice settings fill them. */
+const presentationInputs = {
+  memo: z.string().optional().describe('Defaults to the workspace standard memo.'),
+  footer: z.string().optional().describe('Defaults to the workspace default footer.'),
+  subhead: z.string().optional().describe('Defaults to the workspace default subheading.'),
+  itemTitle: z.string().optional().describe('Column heading for line names. Defaults to the workspace setting.'),
+  quantityTitle: z.string().optional().describe('Column heading for quantities. Defaults to the workspace setting.'),
+  priceTitle: z.string().optional().describe('Column heading for unit prices. Defaults to the workspace setting.'),
+  amountTitle: z.string().optional().describe('Column heading for line totals. Defaults to the workspace setting.'),
+  invoiceNumberLabel: z.string().optional().describe('Label before the number, e.g. "Invoice". Defaults to the workspace setting.'),
 };
 
-function currencyEnvelope(code: string): Record<string, unknown> {
-  const meta = CURRENCIES[code] ?? { symbol: '', name: code };
-  return {
-    url: `https://api.waveapps.com/currencies/${code}/`,
-    code,
-    symbol: meta.symbol,
-    name: meta.name,
-    plural: null,
-  };
-}
-
-function buildInvoiceBody(args: {
-  customerId: number;
-  items: ReadonlyArray<z.infer<typeof InvoiceItemInput>>;
-  status: 'draft' | 'saved';
-  invoiceNumber: string;
-  poSoNumber: string;
-  invoiceDate: string;
-  dueDate: string;
-  currency: string;
-  exchangeRate: string;
+interface InvoiceDefaults {
+  paymentTermsDays: number;
   memo: string;
   footer: string;
   subhead: string;
@@ -75,48 +48,26 @@ function buildInvoiceBody(args: {
   priceTitle: string;
   amountTitle: string;
   invoiceNumberLabel: string;
-}): Record<string, unknown> {
+}
+
+function defaultsFromSettings(settings: unknown): InvoiceDefaults {
+  const s = (settings !== null && typeof settings === 'object' ? settings : {}) as Record<string, unknown>;
+  const text = (v: unknown, fallback: string): string => (typeof v === 'string' && v.length > 0 ? v : fallback);
   return {
-    amount_title: args.amountTitle,
-    customer: { id: args.customerId },
-    discounts: [],
-    due_date: args.dueDate,
-    exchange_rate: args.exchangeRate,
-    footer: args.footer,
-    hide_amount: false,
-    hide_description: false,
-    hide_item: false,
-    hide_price: false,
-    hide_quantity: false,
-    invoice_currency: currencyEnvelope(args.currency),
-    invoice_date: args.invoiceDate,
-    invoice_number: args.invoiceNumber,
-    invoice_number_label: args.invoiceNumberLabel,
-    item_title: args.itemTitle,
-    items: args.items.map((it) => ({
-      description: it.description,
-      price: it.price,
-      product: {
-        id: it.productId,
-        income_account: { id: it.incomeAccountId },
-        name: it.name,
-      },
-      quantity: it.quantity,
-      // Wave's REST API rejects bare integers here with
-      //   "Invalid data. Expected a dictionary, but got int."
-      // The required shape is { sales_tax: { id: <int> } } per line-tax entry.
-      taxes: it.taxes.map((id) => ({ sales_tax: { id } })),
-    })),
-    memo: args.memo,
-    po_so_number: args.poSoNumber,
-    price_title: args.priceTitle,
-    quantity_title: args.quantityTitle,
-    require_terms_of_service_agreement: false,
-    status: args.status,
-    subhead: args.subhead,
-    attachment_ids: [],
-    tag_ids: [],
+    paymentTermsDays: typeof s['default_payment_terms'] === 'number' ? s['default_payment_terms'] : 15,
+    memo: text(s['standard_memo'], ''),
+    footer: text(s['default_footer'], ''),
+    subhead: text(s['default_subheading'], ''),
+    itemTitle: text(s['default_item_title'], 'Items'),
+    quantityTitle: text(s['default_quantity_title'], 'Quantity'),
+    priceTitle: text(s['default_price_title'], 'Price'),
+    amountTitle: text(s['default_amount_title'], 'Amount'),
+    invoiceNumberLabel: text(s['default_title'], 'Invoice'),
   };
+}
+
+function invoicePath(businessId: string, invoiceId: string): string {
+  return `/businesses/${businessId}/invoices/${encodeURIComponent(invoiceId)}/`;
 }
 
 export function registerInvoiceTools(server: McpServer, client: WaveClient): void {
@@ -125,27 +76,28 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     {
       title: 'List Wave invoices',
       description:
-        'Lists invoices for a Wave business. REST-backed (`/businesses/{id}/invoices/`). Supports status filtering, pagination, sort, customer embed.',
+        'Lists invoices with their status, dates, totals and customer. Filter by status, page and sort. Each row\'s `id` is what the other invoice tools take as `invoiceId`; call wave_get_invoice for line items and payments.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
-        status: InvoiceStatus.optional(),
+        businessId: z.uuid().optional(),
+        status: InvoiceStatus.optional().describe('draft, unpaid, paid, overdue or partial. Omit for all.'),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(200).default(25),
-        sort: InvoiceSort.default('-invoice_date'),
-        embedCustomer: z.boolean().default(true),
+        sort: InvoiceSort.default('-invoice_date').describe('A leading "-" sorts descending.'),
+        raw: z.boolean().default(false).describe('Return Wave\'s full records instead of the trimmed rows. Large.'),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    async ({ businessId, status, page, pageSize, sort, embedCustomer }) => {
+    async ({ businessId, status, page, pageSize, sort, raw }) => {
       const id = client.businessId(businessId);
       const paged = await client.rest.getPaged<unknown>(`/businesses/${id}/invoices/`, {
         page,
         page_size: pageSize,
         sort,
         status,
-        embed_customer: embedCustomer,
+        embed_customer: true,
       });
-      return jsonResult(paged);
+      if (raw) return jsonResult(paged);
+      return jsonResult({ items: paged.items.map(shapeInvoiceSummary), meta: paged.meta });
     },
   );
 
@@ -154,29 +106,18 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Get one Wave invoice',
       description:
-        'Fetches a single invoice by ID, with customer/items/payments/taxes/attachments embedded. `invoiceId` is the long integer Wave returns on the list endpoint (e.g. 2520825210135910924).',
+        'Fetches one invoice with its line items, taxes, payments and customer. Use it before wave_update_invoice, and to find `items[].product.id`, `items[].product.income_account.id`, `items[].taxes[].sales_tax.id` and `payments[].id`.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
-        invoiceId: z.string().min(1),
+        businessId: z.uuid().optional(),
+        invoiceId: z.string().min(1).describe('Invoice `id` from wave_list_invoices.'),
+        raw: z.boolean().default(false).describe('Return Wave\'s full record instead of the trimmed one. Large.'),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
-    async ({ businessId, invoiceId }) => {
+    async ({ businessId, invoiceId, raw }) => {
       const id = client.businessId(businessId);
-      const invoice = await client.rest.get<unknown>(
-        `/businesses/${id}/invoices/${encodeURIComponent(invoiceId)}/`,
-        {
-          embed_accounts: true,
-          embed_customer: true,
-          embed_discounts: true,
-          embed_items: true,
-          embed_payments: true,
-          embed_products: true,
-          embed_sales_taxes: true,
-          embed_attachments: true,
-        },
-      );
-      return jsonResult({ invoice });
+      const invoice = await client.rest.get<unknown>(invoicePath(id, invoiceId), INVOICE_EMBEDS);
+      return jsonResult({ invoice: raw ? invoice : shapeInvoice(invoice) });
     },
   );
 
@@ -185,8 +126,8 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Get Wave invoice settings',
       description:
-        'Returns the workspace-wide invoice settings (numbering, terms, branding) used as defaults on new invoices.',
-      inputSchema: { businessId: z.string().uuid().optional() },
+        'Returns the workspace-wide invoice settings: default payment terms (days), column headings, footer, memo and reminder settings. wave_create_invoice uses these as its defaults.',
+      inputSchema: { businessId: z.uuid().optional() },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async ({ businessId }) => {
@@ -201,58 +142,52 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Create a Wave invoice',
       description:
-        'Creates an invoice via REST `POST /businesses/{id}/invoices/`. Saves as a draft by default. The customer + each item\'s product/income-account references are integer IDs from prior list calls.',
+        'Creates an invoice, as an unapproved draft unless `status` is "saved". Needs the customer\'s integer id (wave_list_customers `internalId`) and at least one line. Anything you leave out follows the workspace: currency, payment terms, column headings, footer and memo come from wave_get_business and wave_get_invoice_settings; the number is Wave\'s next one.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
-        customerId: z.number().int().positive().describe('Integer customer ID.'),
+        businessId: z.uuid().optional(),
+        customerId: z.number().int().positive().describe('Integer customer id: `internalId` from wave_list_customers.'),
         items: z.array(InvoiceItemInput).min(1),
-        status: z.enum(['draft', 'saved']).default('draft').describe('"draft" leaves it unapproved; "saved" approves on create.'),
-        invoiceNumber: z.string().optional().describe('Auto-incremented if omitted.'),
+        status: InvoiceLifecycle.default('draft').describe('"draft" leaves it unapproved; "saved" approves it on create.'),
+        invoiceNumber: z.string().optional().describe('Defaults to the next number in the workspace.'),
         poSoNumber: z.string().default(''),
-        invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('YYYY-MM-DD. Defaults to today.'),
-        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Defaults to 15 days after invoice date.'),
-        currency: z.string().length(3).toUpperCase().default('CAD'),
+        invoiceDate: IsoDate.optional().describe('YYYY-MM-DD. Defaults to today.'),
+        dueDate: IsoDate.optional().describe('YYYY-MM-DD. Defaults to the invoice date plus the workspace payment terms.'),
+        currency: Currency.optional().describe('ISO 4217 code. Defaults to the business currency.'),
         exchangeRate: z.string().default('1.0000000000'),
-        memo: z.string().default(''),
-        footer: z.string().default(''),
-        subhead: z.string().default(''),
-        itemTitle: z.string().default('Services'),
-        quantityTitle: z.string().default('Hours'),
-        priceTitle: z.string().default('Rate'),
-        amountTitle: z.string().default('Amount'),
-        invoiceNumberLabel: z.string().default('Invoice'),
+        ...presentationInputs,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async (args) => {
       const id = client.businessId(args.businessId);
-      const today = new Date().toISOString().slice(0, 10);
-      const invoiceDate = args.invoiceDate ?? today;
-      const dueDate = args.dueDate ?? addDays(invoiceDate, 15);
+      const needsSettings = [args.dueDate, args.memo, args.footer, args.subhead, args.itemTitle, args.quantityTitle, args.priceTitle, args.amountTitle, args.invoiceNumberLabel].some((v) => v === undefined);
+      const [settings, business] = await Promise.all([
+        needsSettings ? client.rest.get<unknown>(`/businesses/${id}/invoices/settings/`) : undefined,
+        args.currency === undefined ? client.rest.get<unknown>(`/businesses/${id}/`) : undefined,
+      ]);
+      const d = defaultsFromSettings(settings);
+      const invoiceDate = args.invoiceDate ?? todayIso();
       const body = buildInvoiceBody({
         customerId: args.customerId,
         items: args.items,
         status: args.status,
-        invoiceNumber: args.invoiceNumber ?? '',
+        invoiceNumber: args.invoiceNumber,
         poSoNumber: args.poSoNumber,
         invoiceDate,
-        dueDate,
-        currency: args.currency,
+        dueDate: args.dueDate ?? addDays(invoiceDate, d.paymentTermsDays),
+        currency: args.currency ?? shapeBusiness(business).currency ?? 'USD',
         exchangeRate: args.exchangeRate,
-        memo: args.memo,
-        footer: args.footer,
-        subhead: args.subhead,
-        itemTitle: args.itemTitle,
-        quantityTitle: args.quantityTitle,
-        priceTitle: args.priceTitle,
-        amountTitle: args.amountTitle,
-        invoiceNumberLabel: args.invoiceNumberLabel,
+        memo: args.memo ?? d.memo,
+        footer: args.footer ?? d.footer,
+        subhead: args.subhead ?? d.subhead,
+        itemTitle: args.itemTitle ?? d.itemTitle,
+        quantityTitle: args.quantityTitle ?? d.quantityTitle,
+        priceTitle: args.priceTitle ?? d.priceTitle,
+        amountTitle: args.amountTitle ?? d.amountTitle,
+        invoiceNumberLabel: args.invoiceNumberLabel ?? d.invoiceNumberLabel,
       });
-      // Wave auto-generates invoice_number when blank — drop it from the payload
-      // so it doesn't overwrite the server-assigned next number.
-      if (!args.invoiceNumber) delete (body as Record<string, unknown>)['invoice_number'];
       const invoice = await client.rest.post<unknown>(`/businesses/${id}/invoices/`, body);
-      return jsonResult({ invoice });
+      return jsonResult({ invoice: shapeInvoice(invoice) });
     },
   );
 
@@ -261,38 +196,32 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Update a Wave invoice',
       description:
-        'Patches an invoice via REST `PATCH /businesses/{id}/invoices/{invoiceId}/`. Send the full intended state — Wave replaces the prior body. Use `wave_get_invoice` first to read the current state if you only want to change one field.',
+        'Changes an invoice. Pass only the fields to change: the tool reads the current invoice and keeps everything else, including line items and approval state. To change lines, pass the complete new `items` list. Pass `status: "draft"` to unapprove or "saved" to approve.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
-        invoiceId: z.string().min(1).describe('The long integer Wave invoice ID.'),
-        customerId: z.number().int().positive(),
-        items: z.array(InvoiceItemInput).min(1),
-        status: z.enum(['draft', 'saved']).default('draft'),
-        invoiceNumber: z.string(),
-        poSoNumber: z.string().default(''),
-        invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        currency: z.string().length(3).toUpperCase().default('CAD'),
-        exchangeRate: z.string().default('1.0000000000'),
-        memo: z.string().default(''),
-        footer: z.string().default(''),
-        subhead: z.string().default(''),
-        itemTitle: z.string().default('Services'),
-        quantityTitle: z.string().default('Hours'),
-        priceTitle: z.string().default('Rate'),
-        amountTitle: z.string().default('Amount'),
-        invoiceNumberLabel: z.string().default('Invoice'),
+        businessId: z.uuid().optional(),
+        invoiceId: z.string().min(1).describe('Invoice `id` from wave_list_invoices.'),
+        customerId: z.number().int().positive().optional().describe('Integer customer id: `internalId` from wave_list_customers.'),
+        items: z.array(InvoiceItemInput).min(1).optional().describe('The complete list of lines the invoice should have.'),
+        status: InvoiceLifecycle.optional().describe('Omit to keep the current approval state.'),
+        invoiceNumber: z.string().optional(),
+        poSoNumber: z.string().optional(),
+        invoiceDate: IsoDate.optional(),
+        dueDate: IsoDate.optional(),
+        currency: Currency.optional(),
+        exchangeRate: z.string().optional(),
+        ...presentationInputs,
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
-    async (args) => {
-      const id = client.businessId(args.businessId);
-      const body = buildInvoiceBody(args);
-      const invoice = await client.rest.patch<unknown>(
-        `/businesses/${id}/invoices/${encodeURIComponent(args.invoiceId)}/`,
-        body,
-      );
-      return jsonResult({ invoice });
+    async ({ businessId, invoiceId, ...supplied }) => {
+      const id = client.businessId(businessId);
+      const path = invoicePath(id, invoiceId);
+      const changes = definedOnly(supplied);
+      const merged: InvoiceBodyArgs = hasFullState(changes)
+        ? changes
+        : { ...bodyArgsFromInvoice(shapeInvoice(await client.rest.get<unknown>(path, INVOICE_EMBEDS))), ...changes };
+      const invoice = await client.rest.patch<unknown>(path, buildInvoiceBody(merged));
+      return jsonResult({ invoice: shapeInvoice(invoice) });
     },
   );
 
@@ -301,20 +230,17 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Approve a Wave invoice draft',
       description:
-        'Approves a draft invoice (status `draft` → `saved`). Wave\'s UI calls this "Approve draft" — required before the invoice can be sent. Implemented as REST PATCH `/invoices/{id}/` with `{"status":"saved"}`.',
+        'Approves a draft so it can be sent or paid (Wave\'s "Approve draft"). Returns the invoice; its status moves from `draft` to `unpaid`.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         invoiceId: z.string().min(1),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ businessId, invoiceId }) => {
       const id = client.businessId(businessId);
-      const invoice = await client.rest.patch<unknown>(
-        `/businesses/${id}/invoices/${encodeURIComponent(invoiceId)}/`,
-        { status: 'saved' },
-      );
-      return jsonResult({ invoice });
+      const invoice = await client.rest.patch<unknown>(invoicePath(id, invoiceId), { status: 'saved' });
+      return jsonResult({ invoice: shapeInvoice(invoice) });
     },
   );
 
@@ -323,20 +249,17 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Mark a Wave invoice as sent (outside Wave)',
       description:
-        'Flips an approved invoice\'s status to "Sent" without actually emailing through Wave. Use this when you delivered the invoice yourself (print + mail, attachment in another tool, etc.). REST PUT `/invoices/{id}/mark-sent/` with `{"sent_via":"marked_sent"}`.',
+        'Records that an approved invoice was delivered some other way (printed, attached elsewhere) without emailing it through Wave. Use wave_send_invoice to actually email it.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         invoiceId: z.string().min(1),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     },
     async ({ businessId, invoiceId }) => {
       const id = client.businessId(businessId);
-      const result = await client.rest.put<unknown>(
-        `/businesses/${id}/invoices/${encodeURIComponent(invoiceId)}/mark-sent/`,
-        { sent_via: 'marked_sent' },
-      );
-      return jsonResult({ result });
+      const result = await client.rest.put<unknown>(`${invoicePath(id, invoiceId)}mark-sent/`, { sent_via: 'marked_sent' });
+      return jsonResult(looksLikeInvoice(result) ? { invoice: shapeInvoice(result) } : { result });
     },
   );
 
@@ -345,47 +268,33 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Send a Wave invoice by email',
       description:
-        'Sends an approved invoice to one or more recipients via Wave\'s email service. The invoice must be in `saved` status first (run `wave_approve_invoice`). Backed by the GraphQL `invoiceSend` mutation.',
+        'Emails an approved invoice to the recipients through Wave. This cannot be undone; confirm the recipients and the sender with the user first. The invoice must be approved (wave_approve_invoice). `fromAddress` must be one of the verified `invoice_sending_emails` on wave_get_business.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
-        invoiceId: z
-          .string()
-          .min(1)
-          .describe('Wave integer invoice ID (e.g. "2520832016585333081"). The tool encodes it as a Relay global ID for GraphQL.'),
-        to: z
-          .array(z.string().email())
-          .min(1)
-          .max(10)
-          .describe('Recipient email addresses. At least one; Wave caps at ~10.'),
+        businessId: z.uuid().optional(),
+        invoiceId: z.string().min(1).describe('Invoice `id` from wave_list_invoices.'),
+        to: z.array(z.email()).min(1).max(10).describe('Recipient email addresses, up to 10.'),
         subject: z.string().min(1),
         message: z.string().min(1),
-        fromAddress: z
-          .string()
-          .email()
-          .describe('Sender email. Must be a verified-sender address on your Wave account.'),
+        fromAddress: z.email().describe('A verified sender from wave_get_business `invoice_sending_emails`.'),
         ccMyself: z.boolean().default(true),
-        attachPDF: z.boolean().default(true).describe('Embed the invoice as a PDF attachment.'),
-        includeAttachments: z
-          .boolean()
-          .default(false)
-          .describe('Include any extra files attached to the invoice (separate from the auto-generated PDF).'),
+        attachPDF: z.boolean().default(true).describe('Attach the invoice PDF.'),
+        includeAttachments: z.boolean().default(false).describe('Also attach any files attached to the invoice.'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async (args) => {
       const businessUuid = client.businessId(args.businessId);
-      const invoiceGlobalId = toCompositeGlobalId(businessUuid, 'Invoice', args.invoiceId);
       const data = await client.gql.execute<{
         invoiceSend: {
           didSucceed: boolean;
-          inputErrors?: ReadonlyArray<{ path?: ReadonlyArray<string | number>; message: string; code?: string }> | null;
+          inputErrors?: ReadonlyArray<{ path?: ReadonlyArray<string | number> | null; message: string; code?: string | null }> | null;
         };
       }>({
         operationName: 'InvoiceSend',
         query: INVOICE_SEND_MUTATION,
         variables: {
           input: {
-            invoiceId: invoiceGlobalId,
+            invoiceId: toCompositeGlobalId(businessUuid, 'Invoice', args.invoiceId),
             to: args.to,
             subject: args.subject,
             message: args.message,
@@ -396,97 +305,8 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
           },
         },
       });
-      return jsonResult(data.invoiceSend);
-    },
-  );
-
-  server.registerTool(
-    'wave_list_accounts',
-    {
-      title: 'List Wave chart-of-accounts entries',
-      description:
-        'Lists active accounts in the chart of accounts. Use this to find the integer `id` to pass as `paymentAccountId` when recording an invoice payment (look for accounts of type "Cash on Hand", "Wave Payments", or a connected bank account).',
-      inputSchema: {
-        businessId: z.string().uuid().optional(),
-        activeOnly: z.boolean().default(true),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: true },
-    },
-    async ({ businessId, activeOnly }) => {
-      const id = client.businessId(businessId);
-      const accounts = await client.rest.get<unknown>(`/businesses/${id}/accounts/`, {
-        active_only: activeOnly,
-      });
-      return jsonResult({ accounts });
-    },
-  );
-
-  server.registerTool(
-    'wave_record_invoice_payment',
-    {
-      title: 'Record a payment against a Wave invoice',
-      description:
-        'Records a manual payment (cash / cheque / bank transfer / etc.) against an approved invoice. REST POST `/invoices/{id}/payments/`. Pulls the invoice toward `paid` status. The invoice must already be approved (status `saved` or later).',
-      inputSchema: {
-        businessId: z.string().uuid().optional(),
-        invoiceId: z.string().min(1).describe('The long integer Wave invoice ID.'),
-        amount: z.number().positive().describe('Decimal dollar amount. e.g. 5 or 1429.13.'),
-        paymentDate: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional()
-          .describe('YYYY-MM-DD. Defaults to today.'),
-        paymentMethod: z
-          .enum(['bank_transfer', 'cash', 'cheque', 'credit_card', 'paypal', 'other'])
-          .default('bank_transfer')
-          .describe('UI labels map: Bank payment → bank_transfer, Cash → cash, Cheque → cheque, Credit card → credit_card, PayPal → paypal, Other → other.'),
-        paymentAccountId: z
-          .number()
-          .int()
-          .positive()
-          .describe('Integer account ID from `wave_list_accounts`. Common picks: "Cash on Hand", "Wave Payments", a connected bank account.'),
-        exchangeRate: z.number().default(1),
-        memo: z.string().nullish(),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
-    },
-    async (args) => {
-      const id = client.businessId(args.businessId);
-      const today = new Date().toISOString().slice(0, 10);
-      const payment = await client.rest.post<unknown>(
-        `/businesses/${id}/invoices/${encodeURIComponent(args.invoiceId)}/payments/`,
-        {
-          amount: args.amount,
-          exchange_rate: args.exchangeRate,
-          memo: args.memo ?? null,
-          payment_account: { id: args.paymentAccountId },
-          payment_date: args.paymentDate ?? today,
-          payment_method: args.paymentMethod,
-        },
-      );
-      return jsonResult({ payment });
-    },
-  );
-
-  server.registerTool(
-    'wave_delete_invoice_payment',
-    {
-      title: 'Remove a payment from a Wave invoice',
-      description:
-        'Removes a recorded payment from an invoice. REST DELETE `/invoices/{invoiceId}/payments/{paymentId}/`. Returns 204. The invoice\'s status will recompute (`paid` → `unpaid`/`partial`).',
-      inputSchema: {
-        businessId: z.string().uuid().optional(),
-        invoiceId: z.string().min(1),
-        paymentId: z.string().min(1).describe('Long integer payment ID from the payment record (or from `wave_get_invoice` → payments embed).'),
-      },
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
-    },
-    async ({ businessId, invoiceId, paymentId }) => {
-      const id = client.businessId(businessId);
-      await client.rest.delete(
-        `/businesses/${id}/invoices/${encodeURIComponent(invoiceId)}/payments/${encodeURIComponent(paymentId)}/`,
-      );
-      return jsonResult({ ok: true, invoiceId, paymentId });
+      requireDidSucceed('InvoiceSend', data.invoiceSend);
+      return jsonResult({ sent: true, invoiceId: args.invoiceId, to: args.to });
     },
   );
 
@@ -494,24 +314,22 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     'wave_delete_invoice',
     {
       title: 'Delete a Wave invoice',
-      description:
-        'Deletes an invoice via REST `DELETE /businesses/{id}/invoices/{invoiceId}/`. Returns 204 No Content on success. Only drafts and unsent invoices should be deleted.',
+      description: 'Deletes an invoice permanently. Only drafts and unsent invoices should be deleted; confirm with the user first.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         invoiceId: z.string().min(1),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
     },
     async ({ businessId, invoiceId }) => {
       const id = client.businessId(businessId);
-      await client.rest.delete(`/businesses/${id}/invoices/${encodeURIComponent(invoiceId)}/`);
+      await client.rest.delete(invoicePath(id, invoiceId));
       return jsonResult({ ok: true, invoiceId });
     },
   );
 }
 
-function addDays(isoDate: string, days: number): string {
-  const d = new Date(`${isoDate}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+/** Drop undefined entries so a spread cannot overwrite a read value with "not supplied". */
+function definedOnly<T extends object>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
