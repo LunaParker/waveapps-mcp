@@ -29,6 +29,7 @@ describe('registerAllTools', () => {
       'wave_delete_transaction',
       'wave_duplicate_estimate',
       'wave_duplicate_invoice',
+      'wave_export_report',
       'wave_get_business',
       'wave_get_customer',
       'wave_get_estimate',
@@ -67,7 +68,7 @@ describe('registerAllTools', () => {
       'wave_update_product',
       'wave_update_transaction',
     ]);
-    expect(names).toHaveLength(57);
+    expect(names).toHaveLength(58);
   });
 
   it('marks every tool that emails someone as destructive, so clients ask before it runs', () => {

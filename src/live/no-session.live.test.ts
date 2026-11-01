@@ -136,6 +136,7 @@ const CALLS: Record<string, Record<string, unknown>> = {
   wave_convert_estimate_to_invoice: { estimateGlobalId: RELAY_ID },
   wave_get_estimate_pdf: { estimateGlobalId: RELAY_ID },
   wave_get_report: { report: 'profit_and_loss', startDate: '2026-01-01', endDate: '2026-03-31', basis: 'cash' },
+  wave_export_report: { report: 'balance_sheet', asOf: '2026-03-31', format: 'pdf' },
   wave_get_customer: { customerId: 1 },
   wave_list_recurring_invoices: { state: 'active', customerId: 1, sort: '-next_invoice_date', page: 1, pageSize: 5 },
   wave_get_recurring_invoice: { recurringInvoiceId: '1' },
