@@ -300,6 +300,19 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
     expect(transaction.id).toBe(first.id);
   });
 
+  it('wave_list_recurring_invoices and wave_get_recurring_invoice', async () => {
+    const Summary = z.object({ id: z.string(), state: z.string(), customerId: IntId.nullable(), currency: z.string(), paymentTerms: z.string() });
+    const list = await call('wave_list_recurring_invoices', z.object({ items: z.array(Summary), meta: PageMeta }), { pageSize: 5 });
+    const first = list.items[0];
+    if (!first) return;
+    const { recurringInvoice } = await call(
+      'wave_get_recurring_invoice',
+      z.object({ recurringInvoice: Summary.extend({ lineItems: z.array(z.object({ productId: IntId.nullable(), quantity: z.number() })) }) }),
+      { recurringInvoiceId: first.id },
+    );
+    expect(recurringInvoice.id).toBe(first.id);
+  });
+
   it('wave_list_tags', async () => {
     await call('wave_list_tags', z.object({ tags: z.array(z.object({ id: z.string(), name: z.string() })), pageInfo: z.object({ currentPage: z.number() }).loose() }));
   });
