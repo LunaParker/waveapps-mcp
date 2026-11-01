@@ -2,8 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.dependencies import get_http_request
 from fastmcp.utilities.tests import asgi_client, asgi_server, run_server_async
+from mcp_types.version import HANDSHAKE_PROTOCOL_VERSIONS
 
 from waveapps_gateway import __main__ as cli
 from waveapps_gateway import gate
@@ -19,8 +20,13 @@ def stub_upstream() -> FastMCP:
     upstream = FastMCP("stub")
 
     @upstream.tool
-    def seen_authorization() -> str:
-        return get_http_headers(include={"authorization"}).get("authorization", "")
+    def seen_authorization() -> list[str]:
+        # Every Authorization header as sent: Node keeps the first of duplicates, FastMCP's helpers the last.
+        return get_http_request().headers.getlist("authorization")
+
+    @upstream.tool
+    def seen_protocol_version() -> str:
+        return get_http_request().headers.get("mcp-protocol-version", "")
 
     return upstream
 
@@ -31,7 +37,17 @@ async def test_the_upstream_sees_the_gateway_token_not_the_callers():
         proxy = build_proxy(url, "TEST_upstream_token", auth=None)
         async with asgi_client(proxy, headers={"Authorization": "Bearer TEST_caller_token"}) as client:
             result = await client.call_tool("seen_authorization", {})
-    assert result.data == "Bearer TEST_upstream_token"
+    assert result.data == ["Bearer TEST_upstream_token"]
+
+
+@pytest.mark.anyio
+async def test_the_upstream_is_reached_over_the_handshake_protocol():
+    # waveapps-mcp only speaks the initialize handshake; a modern (server/discover) front must not reach it as modern.
+    async with run_server_async(stub_upstream()) as url:
+        proxy = build_proxy(url, "TEST_upstream_token", auth=None)
+        async with asgi_client(proxy) as client:
+            result = await client.call_tool("seen_protocol_version", {})
+    assert result.data in HANDSHAKE_PROTOCOL_VERSIONS
 
 
 def test_build_app_gates_with_google_and_the_allowlist(config):
