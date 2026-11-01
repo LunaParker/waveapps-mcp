@@ -29,6 +29,7 @@ describe('registerAllTools', () => {
       'wave_get_invoice',
       'wave_get_invoice_settings',
       'wave_get_product',
+      'wave_get_report',
       'wave_list_accounts',
       'wave_list_bills',
       'wave_list_businesses',
@@ -48,6 +49,6 @@ describe('registerAllTools', () => {
       'wave_update_invoice',
       'wave_update_product',
     ]);
-    expect(names).toHaveLength(38);
+    expect(names).toHaveLength(39);
   });
 });

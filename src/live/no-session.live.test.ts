@@ -135,6 +135,7 @@ const CALLS: Record<string, Record<string, unknown>> = {
   wave_duplicate_estimate: { estimateGlobalId: RELAY_ID },
   wave_convert_estimate_to_invoice: { estimateGlobalId: RELAY_ID },
   wave_get_estimate_pdf: { estimateGlobalId: RELAY_ID },
+  wave_get_report: { report: 'profit_and_loss', startDate: '2026-01-01', endDate: '2026-03-31', basis: 'cash' },
   wave_list_products: {},
   wave_get_product: { productId: 1 },
   wave_create_product: { name: 'Contract check', price: 1, incomeAccountId: 1, defaultSalesTaxes: [1] },
@@ -142,8 +143,9 @@ const CALLS: Record<string, Record<string, unknown>> = {
   wave_delete_product: { productId: 1 },
 };
 
-// GraphQL enum inputs: Wave checks each value against its schema before auth. Bases carry no
-// line taxes so a failure here points at the enum value alone.
+// Enum inputs, one call per value. GraphQL checks each value against its schema before auth; on
+// REST a value picks a route, which must answer 401, not 404. Bases carry no line taxes so a
+// failure here points at the enum value alone.
 const UNTAXED_ESTIMATE = {
   ...CALLS['wave_update_estimate']!,
   items: [{ ...ESTIMATE_ITEM, taxIds: [] }],
@@ -159,6 +161,7 @@ const GRAPHQL_ENUM_INPUTS: ReadonlyArray<[tool: string, field: string, base: Rec
   ['wave_update_estimate', 'depositStatus', UNTAXED_ESTIMATE],
   ['wave_update_estimate', 'depositUnit', { ...UNTAXED_ESTIMATE, depositStatus: 'ENABLED_OPTIONAL' }],
   ['wave_mark_estimate_sent', 'sendMethod', { estimateGlobalId: RELAY_ID }],
+  ['wave_get_report', 'report', {}],
 ];
 
 // Explicit auth and business: nothing is read from env or ~/.config, and no refresher is wired.
