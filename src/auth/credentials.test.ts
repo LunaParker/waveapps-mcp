@@ -12,7 +12,7 @@ import {
   readCredentials,
   writeCredentials,
 } from './credentials.js';
-import { memorySecretStore } from './secrets.js';
+import { fileSecretStore, memorySecretStore } from './secrets.js';
 
 let tmp: string;
 const ENV_KEY = 'WAVE_MCP_CONFIG_DIR';
@@ -176,6 +176,13 @@ describe('migrateLegacySecrets', () => {
     const before = readFileSync(credentialsPath(), 'utf8');
     const failing = { ...memorySecretStore(), set: (): void => { throw new Error('keychain locked'); } };
     expect(() => migrateLegacySecrets(failing)).toThrowError(/keychain locked/);
+    expect(readFileSync(credentialsPath(), 'utf8')).toBe(before);
+  });
+
+  it('leaves the file alone for a read-only store', () => {
+    writeFileSync(credentialsPath(), JSON.stringify({ authToken: 'X', password: 'hunter2' }), 'utf8');
+    const before = readFileSync(credentialsPath(), 'utf8');
+    expect(migrateLegacySecrets(fileSecretStore({}))).toEqual([]);
     expect(readFileSync(credentialsPath(), 'utf8')).toBe(before);
   });
 });

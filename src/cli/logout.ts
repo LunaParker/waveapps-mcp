@@ -1,5 +1,5 @@
 import { credentialsPath, deleteCredentials } from '../auth/credentials.js';
-import { secretStore, type SecretName, type SecretStore } from '../auth/secrets.js';
+import { SECRET_FILE_VARS, secretStore, type SecretName, type SecretStore } from '../auth/secrets.js';
 
 export interface RunLogoutDeps {
   console?: Pick<Console, 'log'>;
@@ -16,6 +16,10 @@ export function runLogout(deps: RunLogoutDeps = {}): number {
       ? `[waveapps-mcp] Removed ${credentialsPath()}.`
       : `[waveapps-mcp] No credentials file at ${credentialsPath()}.`,
   );
+  if (store.readOnly) {
+    log(`[waveapps-mcp] The password and TOTP secret come from ${SECRET_FILE_VARS.password} and ${SECRET_FILE_VARS['totp-secret']}; delete those files yourself to remove them.`);
+    return 0;
+  }
   const cleared: SecretName[] = [];
   for (const name of ['password', 'totp-secret'] as const) {
     try {

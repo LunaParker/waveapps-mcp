@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeCredentials } from '../auth/credentials.js';
-import { memorySecretStore } from '../auth/secrets.js';
+import { fileSecretStore, memorySecretStore } from '../auth/secrets.js';
 import { runLogout } from './logout.js';
 
 let tmp: string;
@@ -40,6 +40,13 @@ describe('runLogout', () => {
     const log = vi.fn();
     expect(runLogout({ console: { log } })).toBe(0);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('No credentials file'));
+  });
+
+  it('leaves file-based secrets alone and says where they are', () => {
+    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined });
+    const log = vi.fn();
+    expect(runLogout({ console: { log }, store: fileSecretStore({}) })).toBe(0);
+    expect(log.mock.calls.flat().join('\n')).toMatch(/WAVE_PASSWORD_FILE and WAVE_TOTP_SECRET_FILE/);
   });
 
   it('uses the global console when no override is supplied', () => {

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readCredentials, writeCredentials } from '../auth/credentials.js';
-import { memorySecretStore, secretStore } from '../auth/secrets.js';
+import { fileSecretStore, memorySecretStore, secretStore } from '../auth/secrets.js';
 import {
   SAVE_PW_EXIT_BAD_TOTP,
   SAVE_PW_EXIT_DECLINED,
@@ -252,6 +252,27 @@ describe('runSavePassword', () => {
       const io = scriptedIo(['y', 'me@example.com', 'n'], ['pw']);
       expect(await runSavePassword({ io, console: silent, store })).toBe(SAVE_PW_EXIT_STORE_FAILED);
       expect(readFileSync(join(tmp, 'credentials.json'), 'utf8')).toBe(before);
+    });
+  });
+
+  describe('secrets from files', () => {
+    it('saves only the email and never asks for secrets', async () => {
+      seed();
+      const io = scriptedIo(['new@example.com'], []);
+      const log = vi.fn();
+      const code = await runSavePassword({ io, console: { log, error: vi.fn() }, store: fileSecretStore({}) });
+      expect(code).toBe(SAVE_PW_EXIT_OK);
+      expect(readCredentials()?.email).toBe('new@example.com');
+      expect(io.secretLog).toEqual([]);
+      const out = log.mock.calls.flat().join('\n');
+      expect(out).toMatch(/WAVE_PASSWORD_FILE and WAVE_TOTP_SECRET_FILE/);
+      expect(out).not.toMatch(/INSECURE/);
+    });
+
+    it('still needs credentials.json first', async () => {
+      const io = scriptedIo([], []);
+      const code = await runSavePassword({ io, console: silent, store: fileSecretStore({}) });
+      expect(code).toBe(SAVE_PW_EXIT_NO_INPUT);
     });
   });
 });

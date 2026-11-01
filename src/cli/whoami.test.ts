@@ -1,9 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeCredentials } from '../auth/credentials.js';
-import { memorySecretStore } from '../auth/secrets.js';
+import { fileSecretStore, memorySecretStore } from '../auth/secrets.js';
 import { runWhoami } from './whoami.js';
 
 let tmp: string;
@@ -102,5 +102,16 @@ describe('runWhoami', () => {
       const out = log.mock.calls.flat().join('\n');
       expect(out).toMatch(new RegExp(`~\\d+${suffix} ago`));
     }
+  });
+
+  it('says when secrets come from files, without printing them', () => {
+    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: 'me@example.com' });
+    const path = join(tmp, 'password');
+    writeFileSync(path, 'TEST_password_value', { mode: 0o600 });
+    const log = vi.fn();
+    expect(runWhoami({ console: { log }, store: fileSecretStore({ password: path }) })).toBe(0);
+    const out = log.mock.calls.flat().join('\n');
+    expect(out).toContain('(from WAVE_PASSWORD_FILE — auto sign-in enabled)');
+    expect(out).not.toContain('TEST_password_value');
   });
 });
