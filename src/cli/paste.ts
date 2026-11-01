@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline/promises';
 import { credentialsPath, patchCredentials } from '../auth/credentials.js';
 import { isUuid } from '../client/ids.js';
+import { sanitise } from './sanitise.js';
 
 export interface RunPasteDeps {
   /** Prompt for one line of input. Defaults to a `readline/promises` interface on stdin/stdout. */
@@ -60,19 +61,6 @@ export async function runPaste(deps: RunPasteDeps = {}): Promise<number> {
   if (businessId) log(`[waveapps-mcp] Default business: ${businessId}`);
   if (!csrfToken) log('[waveapps-mcp] No CSRF token saved — read tools work; mutating tools will throw. Re-run paste to add it.');
   return PASTE_EXIT_OK;
-}
-
-/** Strip whitespace and a single pair of surrounding single/double quotes (common when copying from JSON or DevTools). */
-export function sanitise(raw: string): string {
-  let v = raw.trim();
-  if (v.length >= 2) {
-    const first = v[0];
-    const last = v[v.length - 1];
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      v = v.slice(1, -1).trim();
-    }
-  }
-  return v;
 }
 
 function defaultAsk(): (question: string) => Promise<string> {

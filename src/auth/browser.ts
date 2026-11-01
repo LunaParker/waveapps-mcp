@@ -38,7 +38,6 @@ function defaultExists(path: string): boolean {
 /**
  * Dedicated user-data-dir for every sign-in, headed or headless. Keeps the user's real
  * browser untouched, and keeps Cloudflare's and Auth0's device cookies between runs.
- * Not `browser-profile`: that one was written by the older Puppeteer/Chrome flow.
  */
 export function browserProfileDir(): string {
   return join(configDir(), 'chromium-profile');
@@ -60,7 +59,7 @@ export interface ScrapedAuth {
   businessId: string | undefined;
 }
 
-interface CookieLike {
+export interface CookieLike {
   name: string;
   value: string;
 }

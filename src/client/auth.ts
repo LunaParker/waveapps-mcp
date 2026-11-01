@@ -29,9 +29,6 @@ export function loadAuth(): WaveAuth {
   );
 }
 
-/** Back-compat alias. Prefer `loadAuth`. */
-export const authFromEnv = loadAuth;
-
 /**
  * Build the headers Wave's API expects on every authenticated request.
  *

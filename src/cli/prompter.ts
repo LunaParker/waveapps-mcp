@@ -1,4 +1,5 @@
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
+import { SecretLineBuffer } from './secret-line.js';
 
 /**
  * Long-lived CLI input helper. Two prompt modes:
@@ -69,7 +70,7 @@ function readSecretRaw(stdin: NodeJS.ReadStream): Promise<string> {
     setRaw.call(stdin, true);
     stdin.resume();
 
-    let buffer = '';
+    const buffer = new SecretLineBuffer();
     const cleanup = (): void => {
       stdin.removeListener('data', onData);
       // Restore the original raw state; safe to call even if the value didn't actually change.
@@ -89,20 +90,17 @@ function readSecretRaw(stdin: NodeJS.ReadStream): Promise<string> {
         if (byte === 0x0a || byte === 0x0d || byte === 0x04) {
           cleanup();
           process.stdout.write('\n');
-          resolve(buffer);
+          resolve(buffer.toString());
           return;
         }
-        // Backspace / Delete — remove the last byte from the buffer.
+        // Backspace / Delete: remove the last character from the buffer.
         if (byte === 0x7f || byte === 0x08) {
-          buffer = buffer.slice(0, -1);
+          buffer.backspace();
           continue;
         }
-        // Printable byte — accumulate. We accept full UTF-8 sequences too; multi-byte
-        // characters arrive as their constituent bytes within a single chunk, and
-        // String.fromCharCode reads them as latin-1 which preserves them losslessly
-        // for storage. Most secrets are ASCII anyway.
+        // Anything printable, including UTF-8 continuation bytes, which decode together at the end.
         if (byte >= 0x20) {
-          buffer += String.fromCharCode(byte);
+          buffer.push(byte);
         }
       }
     };

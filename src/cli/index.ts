@@ -57,8 +57,6 @@ export async function dispatchCli(
         exitCode: await runSavePassword({ console: console_ }, { skipConfirmation }),
       };
     }
-    case 'save-password':
-      return { handled: true, exitCode: await runSavePassword({ console: console_ }) };
     case 'logout':
       return { handled: true, exitCode: runLogout({ console: console_ }) };
     case 'whoami':

@@ -3,6 +3,7 @@ import {
   WAVE_AUTH0_ENTRY_URL,
   extractWaveAuth,
   resolveBrowserLaunchTarget,
+  type CookieLike,
   type LaunchTarget,
   type ScrapedAuth,
 } from '../auth/browser.js';
@@ -10,10 +11,7 @@ import { credentialsPath, patchCredentials } from '../auth/credentials.js';
 import { launchWaveBrowser } from '../auth/playwright.js';
 import { withProfileLock } from '../auth/profile-lock.js';
 
-export interface CookieLike {
-  name: string;
-  value: string;
-}
+export type { CookieLike } from '../auth/browser.js';
 
 export interface PageLike {
   goto(url: string, opts?: { waitUntil?: 'domcontentloaded' | 'load' }): Promise<unknown>;

@@ -71,6 +71,8 @@ export function writeCredentials(creds: Omit<StoredCredentials, 'updatedAt'>): S
     updatedAt: new Date().toISOString(),
   };
   writeFileSync(path, JSON.stringify(stored, null, 2), { encoding: 'utf8', mode: 0o600 });
+  // `mode` only applies when the file is created; an existing file keeps whatever it had.
+  chmodSync(path, 0o600);
   return stored;
 }
 

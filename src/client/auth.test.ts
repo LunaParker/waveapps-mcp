@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { authFromEnv, authHeaders, loadAuth, type WaveAuth } from './auth.js';
+import { authHeaders, loadAuth, type WaveAuth } from './auth.js';
 
 describe('authHeaders', () => {
   const auth: WaveAuth = { authToken: 'TOKEN123', csrfToken: 'CSRF456' };
@@ -88,9 +88,5 @@ describe('loadAuth (env precedence)', () => {
     );
     process.env['WAVE_AUTH_TOKEN'] = 'FROM_ENV';
     expect(loadAuth()).toEqual({ authToken: 'FROM_ENV', csrfToken: undefined });
-  });
-
-  it('exposes a back-compat authFromEnv alias', () => {
-    expect(authFromEnv).toBe(loadAuth);
   });
 });

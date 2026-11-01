@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   configDir,
@@ -84,6 +84,15 @@ describe('writeCredentials / readCredentials', () => {
     writeCredentials({ authToken: 'TOKEN', csrfToken: undefined, businessId: undefined, email: undefined });
     const mode = statSync(credentialsPath()).mode & 0o777;
     expect(mode).toBe(0o600);
+  });
+
+  it('tightens an existing looser file back to 0600', () => {
+    const path = credentialsPath();
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, '{}', { mode: 0o644 });
+    chmodSync(path, 0o644);
+    writeCredentials({ authToken: 'EXAMPLE_TOKEN_abcdefghijklmnop', csrfToken: undefined, businessId: undefined, email: undefined });
+    expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
   it('returns null when the file does not exist', () => {
