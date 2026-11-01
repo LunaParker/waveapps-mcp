@@ -141,7 +141,9 @@ function pageMetaFromResponse(res: Response, query?: QueryParams): PageMeta {
   const page = Number(query?.['page'] ?? 1);
   const pageSize = Number(query?.['page_size'] ?? 25);
   const totalCount = numOrNull(res.headers.get('x-total-count'));
-  const totalPages = numOrNull(res.headers.get('x-total-pages'));
+  // Wave sends X-Total-Count but not X-Total-Pages, so derive it.
+  const totalPages =
+    numOrNull(res.headers.get('x-total-pages')) ?? (totalCount === null ? null : Math.ceil(totalCount / pageSize));
   return { page, pageSize, totalCount, totalPages };
 }
 
