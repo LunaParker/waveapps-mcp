@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createRequire } from 'node:module';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { startStdio } from './transports/stdio.js';
 import { startHttp } from './transports/http.js';
@@ -7,9 +8,11 @@ import { WaveClient } from './client/index.js';
 import { registerAllTools } from './tools/index.js';
 import { dispatchCli } from './cli/index.js';
 
+const { version } = createRequire(import.meta.url)('../package.json') as { version: string };
+
 function buildServer(): McpServer {
   const server = new McpServer(
-    { name: 'waveapps-mcp', version: '0.1.0' },
+    { name: 'waveapps-mcp', version },
     { capabilities: { tools: {}, logging: {} } },
   );
   const client = WaveClient.fromEnv();
