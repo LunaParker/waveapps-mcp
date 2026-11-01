@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeCredentials } from '../auth/credentials.js';
+import { memorySecretStore } from '../auth/secrets.js';
 import { runWhoami } from './whoami.js';
 
 let tmp: string;
@@ -30,8 +31,6 @@ describe('runWhoami', () => {
       csrfToken: 'EXAMPLE_FAKE_CSRF_TOKEN_32CHARSEEXX',
       businessId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
       email: undefined,
-      password: undefined,
-      totpSecret: undefined,
     });
     const log = vi.fn();
     expect(runWhoami({ console: { log } })).toBe(0);
@@ -42,8 +41,28 @@ describe('runWhoami', () => {
     expect(out).toMatch(/csrfToken: +EXAM/);
   });
 
+  it('reports stored secrets without printing them', () => {
+    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: 'me@example.com' });
+    const store = memorySecretStore({ password: 'hunter2', 'totp-secret': 'JBSWY3DPEHPK3PXP' });
+    const log = vi.fn();
+    expect(runWhoami({ console: { log }, store })).toBe(0);
+    const out = log.mock.calls.flat().join('\n');
+    expect(out).toMatch(/password: +\(in OS credential store/);
+    expect(out).toMatch(/totpSecret: +\(in OS credential store/);
+    expect(out).not.toContain('hunter2');
+    expect(out).not.toContain('JBSWY3DPEHPK3PXP');
+  });
+
+  it('says so when the credential store cannot be read', () => {
+    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined });
+    const store = { ...memorySecretStore(), get: (): string | null => { throw new Error('locked'); } };
+    const log = vi.fn();
+    expect(runWhoami({ console: { log }, store })).toBe(0);
+    expect(log.mock.calls.flat().join('\n')).toMatch(/could not read the OS credential store: locked/);
+  });
+
   it('handles a short token without exposing it', () => {
-    writeCredentials({ authToken: 'short', csrfToken: undefined, businessId: undefined, email: undefined, password: undefined, totpSecret: undefined });
+    writeCredentials({ authToken: 'short', csrfToken: undefined, businessId: undefined, email: undefined });
     const log = vi.fn();
     runWhoami({ console: { log } });
     const out = log.mock.calls.flat().join('\n');
@@ -53,7 +72,7 @@ describe('runWhoami', () => {
   });
 
   it('falls back to the global console when no override is supplied', () => {
-    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined, password: undefined, totpSecret: undefined });
+    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined });
     const spy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     try {
       expect(runWhoami()).toBe(0);
@@ -67,7 +86,7 @@ describe('runWhoami', () => {
     // We hit the seconds branch with the standard writeCredentials test above.
     // Use a hand-crafted mtime to exercise the other branches deterministically.
     const fs = require('node:fs');
-    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined, password: undefined, totpSecret: undefined });
+    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined });
     const filePath = join(tmp, 'credentials.json');
     const now = Date.now();
     const cases: Array<[number, string]> = [

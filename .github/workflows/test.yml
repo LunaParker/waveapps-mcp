@@ -1,9 +1,10 @@
 name: Test
 
 # Pipeline 1 of 2 — typecheck + vitest suite. Runs on every push/PR.
-# All vitest tests are written against mocked fetch / stubbed puppeteer drivers, so
-# no production Wave credentials are touched here. The Build workflow (pipeline 2)
-# is chained off this one and only runs if Test passes on `main`.
+# All vitest tests are written against mocked fetch, stubbed browser drivers and an
+# in-memory credential store, so no production Wave credentials or keychains are
+# touched here. The Build workflow (pipeline 2) is chained off this one and only runs
+# if Test passes on `main`.
 
 on:
   push:

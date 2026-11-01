@@ -3,6 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
+    setupFiles: ['src/test-setup.ts'],
     environment: 'node',
     globals: false,
     restoreMocks: true,
@@ -14,6 +15,7 @@ export default defineConfig({
       exclude: [
         'src/**/*.test.ts',
         'src/**/_test_utils.ts',
+        'src/test-setup.ts',
         'src/server.ts',
         'src/transports/**',
       ],

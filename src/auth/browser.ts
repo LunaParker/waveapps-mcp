@@ -3,24 +3,17 @@ import { join } from 'node:path';
 import { configDir } from './credentials.js';
 
 const BROWSER_PATH_ENV = 'WAVE_MCP_BROWSER_PATH';
-/** Default puppeteer-core channel when the user hasn't set WAVE_MCP_BROWSER_PATH. */
-export const DEFAULT_BROWSER_CHANNEL = 'chrome' as const;
-export type ChromeChannel = 'chrome' | 'chrome-beta' | 'chrome-canary' | 'chrome-dev' | 'chromium';
 
-/** Result of resolving how puppeteer-core should launch a browser. */
-export type LaunchTarget =
-  | { kind: 'executablePath'; path: string }
-  | { kind: 'channel'; channel: ChromeChannel };
+/** Result of resolving which browser Playwright should launch. */
+export type LaunchTarget = { kind: 'bundled' } | { kind: 'executablePath'; path: string };
 
 /**
- * Resolve which browser puppeteer-core should launch.
+ * Resolve which browser Playwright should launch.
  *
- *   - If `WAVE_MCP_BROWSER_PATH` is set, we hand puppeteer-core that executable verbatim.
+ *   - If `WAVE_MCP_BROWSER_PATH` is set, we hand Playwright that executable verbatim.
  *     An invalid path is rejected outright (returns null) rather than silently falling back —
  *     the user set the env var on purpose and deserves to know it's wrong.
- *   - Otherwise we ask puppeteer-core to discover Chrome via its `channel: 'chrome'` mechanism.
- *     If the user has Chrome installed, puppeteer-core picks it up; if not, the launch fails
- *     with a clear error and the user can set `WAVE_MCP_BROWSER_PATH` to their browser.
+ *   - Otherwise Playwright's own Chromium (`npx playwright install chromium`).
  */
 export function resolveBrowserLaunchTarget(
   opts: { existsFn?: (path: string) => boolean } = {},
@@ -30,7 +23,7 @@ export function resolveBrowserLaunchTarget(
   if (override && override.length > 0) {
     return exists(override) ? { kind: 'executablePath', path: override } : null;
   }
-  return { kind: 'channel', channel: DEFAULT_BROWSER_CHANNEL };
+  return { kind: 'bundled' };
 }
 
 function defaultExists(path: string): boolean {
@@ -42,12 +35,20 @@ function defaultExists(path: string): boolean {
   }
 }
 
-/** Dedicated user-data-dir the login flow always uses. Keeps the user's real Brave/Chrome untouched. */
+/**
+ * Dedicated user-data-dir for every sign-in, headed or headless. Keeps the user's real
+ * browser untouched, and keeps Cloudflare's and Auth0's device cookies between runs.
+ * Not `browser-profile`: that one was written by the older Puppeteer/Chrome flow.
+ */
 export function browserProfileDir(): string {
-  return join(configDir(), 'browser-profile');
+  return join(configDir(), 'chromium-profile');
 }
 
-export const WAVE_LOGIN_URL = 'https://my.waveapps.com/login/';
+/**
+ * Starting here forces Wave's Auth0 sign-in. `my.waveapps.com/login/` picks between Auth0
+ * and the older Django form at random.
+ */
+export const WAVE_AUTH0_ENTRY_URL = 'https://next.waveapps.com/auth/auth0';
 export const WAVE_AUTH_COOKIE = 'waveapps';
 export const WAVE_CSRF_COOKIE = 'identity-csrftoken';
 /** Wave sets the auth cookie to this sentinel when the session is invalidated. */

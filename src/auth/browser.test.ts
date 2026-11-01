@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  DEFAULT_BROWSER_CHANNEL,
   WAVE_AUTH_COOKIE,
   WAVE_CSRF_COOKIE,
   WAVE_INVALIDATED_SENTINEL,
@@ -26,8 +25,8 @@ describe('resolveBrowserLaunchTarget', () => {
     else process.env[ENV] = prior;
   });
 
-  it('defaults to channel:chrome when no env override is set', () => {
-    expect(resolveBrowserLaunchTarget()).toEqual({ kind: 'channel', channel: DEFAULT_BROWSER_CHANNEL });
+  it("defaults to Playwright's bundled Chromium when no env override is set", () => {
+    expect(resolveBrowserLaunchTarget()).toEqual({ kind: 'bundled' });
   });
 
   it('returns the env path verbatim when WAVE_MCP_BROWSER_PATH points at an existing executable', () => {
@@ -43,9 +42,9 @@ describe('resolveBrowserLaunchTarget', () => {
     expect(resolveBrowserLaunchTarget({ existsFn: () => false })).toBeNull();
   });
 
-  it('ignores an empty WAVE_MCP_BROWSER_PATH and falls back to channel:chrome', () => {
+  it('ignores an empty WAVE_MCP_BROWSER_PATH and falls back to the bundled Chromium', () => {
     process.env[ENV] = '';
-    expect(resolveBrowserLaunchTarget()).toEqual({ kind: 'channel', channel: DEFAULT_BROWSER_CHANNEL });
+    expect(resolveBrowserLaunchTarget()).toEqual({ kind: 'bundled' });
   });
 });
 
@@ -64,7 +63,7 @@ describe('browserProfileDir', () => {
   });
 
   it('sits inside the config dir', () => {
-    expect(browserProfileDir()).toBe('/tmp/wave-mcp-test/browser-profile');
+    expect(browserProfileDir()).toBe('/tmp/wave-mcp-test/chromium-profile');
   });
 });
 
