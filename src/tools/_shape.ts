@@ -609,3 +609,84 @@ export function shapeSalesTaxSummary(v: unknown): SalesTaxSummary {
     showTaxNumberOnInvoices: bool(t['showTaxNumberOnInvoices']),
   };
 }
+
+export interface ReportRow { type: string | null; indent: number | null; cells: Array<string | null>; notes?: Array<string | null> }
+export interface ReportSection { title: string | null; columns: Array<string | null>; rows: ReportRow[] }
+export interface ReportFigure { label: string | null; value: string | null; currency: string | null }
+
+/** A report cell's value: one string, or several parts (`["Jan 1, 2026", "to Nov 1, 2026"]`) joined with a space. */
+function cellText(v: unknown): string | null {
+  if (Array.isArray(v)) {
+    const parts = v.filter((x) => x !== null && x !== undefined).map(String);
+    return parts.length === 0 ? null : parts.join(' ');
+  }
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  return null;
+}
+
+function rowType(v: unknown): string | null {
+  const name = str(obj(v)?.['display_name']);
+  return name === null ? null : name.replace(/ Row$/, '').toLowerCase();
+}
+
+/** Wave's report tables come as header-plus-rows sections or, for the aged reports, as grids of values. */
+function shapeReportSection(v: unknown): ReportSection {
+  const sec = obj(v) ?? {};
+  if (Array.isArray(sec['values'])) {
+    return {
+      title: str(obj(sec['report_engine_type'])?.['display_name']),
+      columns: [],
+      rows: arr(sec['values']).map((r) => ({ type: 'data', indent: 0, cells: arr(r).map((c) => cellText(obj(c)?.['value'])) })),
+    };
+  }
+  const header = arr(obj(sec['header'])?.['cells']).map((c) => cellText(obj(c)?.['value']));
+  return {
+    title: header[0] ?? null,
+    columns: header,
+    rows: arr(sec['rows']).map((r) => {
+      const row = obj(r) ?? {};
+      const cells = arr(row['cells']);
+      const notes = cells.map((c) => str(obj(obj(c)?.['params'])?.['subtitle']));
+      const shaped: ReportRow = {
+        type: rowType(row['row_type']),
+        indent: num(obj(row['params'])?.['indentation_level']),
+        cells: cells.map((c) => cellText(obj(c)?.['value'])),
+      };
+      if (notes.some((n) => n !== null)) shaped.notes = notes;
+      return shaped;
+    }),
+  };
+}
+
+function figure(label: string | null, amount: unknown): ReportFigure {
+  const a = obj(amount);
+  return { label, value: str(a?.['value']) ?? str(a?.['formatted_string']), currency: code(a?.['currency']) };
+}
+
+/** Headline figures: `summary: [{ label, total }]` on profit and loss, `{ name, balance }` entries elsewhere. */
+function shapeReportOverview(v: unknown): ReportFigure[] {
+  const o = obj(v) ?? {};
+  if (Array.isArray(o['summary'])) return arr(o['summary']).map((f) => figure(str(obj(f)?.['label']), obj(f)?.['total']));
+  const out: ReportFigure[] = [];
+  for (const [key, entry] of Object.entries(o)) {
+    const e = obj(entry);
+    if (!e) continue;
+    const amount = e['balance'] ?? e['total'] ?? e['amount'];
+    if (amount === undefined) continue;
+    const label = [str(e['name']), str(e['label'])].find((l) => l !== null && l.trim() !== '') ?? key.replace(/_/g, ' ');
+    out.push(figure(label, amount));
+  }
+  return out;
+}
+
+export interface ReportResult { detail: 'summary' | 'detailed'; overview: ReportFigure[]; sections: ReportSection[] }
+
+/** Pick the requested detail level, falling back to the other when Wave leaves it null. */
+export function shapeReport(v: unknown, detail: 'summary' | 'detailed'): ReportResult {
+  const r = obj(v) ?? {};
+  const reports = obj(r['reports']) ?? {};
+  const other = detail === 'summary' ? 'detailed' : 'summary';
+  const used = Array.isArray(reports[detail]) ? detail : Array.isArray(reports[other]) ? other : detail;
+  return { detail: used, overview: shapeReportOverview(r['overview']), sections: arr(reports[used]).map(shapeReportSection) };
+}

@@ -251,6 +251,24 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
     await call('wave_list_receipts', z.object({ receipts: z.array(Receipt) }), { first: 5 });
   });
 
+  it.each([
+    'profit_and_loss', 'balance_sheet', 'cash_flow', 'trial_balance', 'sales_tax',
+    'income_by_customer', 'purchases_by_vendor', 'account_balances', 'aged_receivables', 'aged_payables',
+  ])('wave_get_report %s comes back as labelled rows', async (report) => {
+    const Row = z.object({ type: z.string().nullable(), indent: z.number().nullable(), cells: z.array(z.string().nullable()) });
+    const out = await call(
+      'wave_get_report',
+      z.object({
+        report: z.literal(report),
+        detail: z.enum(['summary', 'detailed']),
+        overview: z.array(z.object({ label: z.string().nullable(), value: z.string().nullable() })),
+        sections: z.array(z.object({ columns: z.array(z.string().nullable()), rows: z.array(Row) })).min(1),
+      }),
+      { report },
+    );
+    expect(out.sections.some((s) => s.rows.length > 0)).toBe(true);
+  });
+
   it('wave_list_sales_taxes gives integer ids and numeric rates', async () => {
     const SalesTax = z.object({ id: IntId, relayId: z.string(), name: z.string(), rate: z.number().nullable(), isArchived: z.boolean() });
     const active = await call('wave_list_sales_taxes', z.object({ salesTaxes: z.array(SalesTax) }));
