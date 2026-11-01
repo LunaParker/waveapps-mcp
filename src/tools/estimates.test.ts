@@ -120,6 +120,77 @@ describe('registerEstimateTools', () => {
     expect(call.variables.input.disableCreditCardPayments).toBe(true);
   });
 
+  it('wraps line taxes as { salesTaxId } objects, composing integer IDs into SalesTax Relay IDs', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    mock.gql.execute.mockResolvedValueOnce({ estimateCreate: { didSucceed: true, estimate: { id: 'x' } } });
+    registerEstimateTools(stub.server as never, mock.client);
+    await stub.invoke('wave_create_estimate', { customerId: 1, items: [{ ...ITEM, taxIds: [1234567, 'TAX_REL'] }] });
+    const taxes = mock.gql.execute.mock.calls[0]![0].variables.input.items[0].taxes;
+    expect(taxes).toEqual([
+      { salesTaxId: Buffer.from(`Business:${BUSINESS_UUID};SalesTax:1234567`, 'utf8').toString('base64') },
+      { salesTaxId: 'TAX_REL' },
+    ]);
+  });
+
+  const UPDATE_ARGS = {
+    estimateGlobalId: 'EST_REL',
+    customerId: 1,
+    items: [ITEM],
+    estimateNumber: '12',
+    estimateDate: '2026-05-11',
+    dueDate: '2026-06-10',
+  };
+
+  it('wave_update_estimate forwards a deposit unit and value when a deposit is enabled', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    mock.gql.execute.mockResolvedValueOnce({ estimatePatch: { didSucceed: true } });
+    registerEstimateTools(stub.server as never, mock.client);
+    await stub.invoke('wave_update_estimate', {
+      ...UPDATE_ARGS,
+      status: 'SENT',
+      depositStatus: 'ENABLED_MANDATORY',
+      depositUnit: 'PERCENTAGE',
+      depositValue: '25',
+    });
+    const input = mock.gql.execute.mock.calls[0]![0].variables.input;
+    expect(input.status).toBe('SENT');
+    expect(input.depositStatus).toBe('ENABLED_MANDATORY');
+    expect(input.depositUnit).toBe('PERCENTAGE');
+    expect(input.depositValue).toBe('25');
+  });
+
+  it('wave_update_estimate rejects an enabled deposit without unit and value', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    registerEstimateTools(stub.server as never, mock.client);
+    await expect(
+      stub.invoke('wave_update_estimate', { ...UPDATE_ARGS, depositStatus: 'ENABLED_OPTIONAL' }),
+    ).rejects.toThrow(/needs both depositUnit and depositValue/);
+    expect(mock.gql.execute).not.toHaveBeenCalled();
+  });
+
+  it('wave_update_estimate drops deposit unit and value when deposits are disabled', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    mock.gql.execute.mockResolvedValueOnce({ estimatePatch: { didSucceed: true } });
+    registerEstimateTools(stub.server as never, mock.client);
+    await stub.invoke('wave_update_estimate', { ...UPDATE_ARGS, depositUnit: 'AMOUNT', depositValue: '10' });
+    const input = mock.gql.execute.mock.calls[0]![0].variables.input;
+    expect(input.depositUnit).toBeNull();
+    expect(input.depositValue).toBeNull();
+  });
+
+  it('rejects estimate statuses Wave no longer accepts', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    registerEstimateTools(stub.server as never, mock.client);
+    await expect(stub.invoke('wave_update_estimate', { ...UPDATE_ARGS, status: 'ACTIVE' })).rejects.toThrow();
+    await expect(stub.invoke('wave_list_estimates', { allStatus: 'OVERDUE' })).rejects.toThrow();
+    expect(mock.gql.execute).not.toHaveBeenCalled();
+  });
+
   it('wave_delete_estimate sends the estimateId to the delete mutation', async () => {
     const stub = createStubServer();
     const mock = createMockClient();

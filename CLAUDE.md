@@ -16,11 +16,14 @@ npm run build                      # tsc, src/ to dist/
 npm test                           # vitest, no network
 npm run typecheck
 npm run test:coverage
+npm run test:live                  # live contract checks, no session needed
+npm run test:live:signed-in        # plus read-only checks with the stored session
 npx playwright install chromium    # once, before login or refresh
 ```
 
 - Node 20.18 or later. CI (`.github/workflows/test.yml`) runs `npm ci --ignore-scripts`, typecheck and tests on Node 20 and 22. `build.yml` compiles and uploads `dist` after Test passes on `main`.
 - `npm run dev` runs `tsx watch src/server.ts`.
+- The live suites (`src/live/`, `vitest.live.config.ts`) never run in `npm test` or CI. `test:live` drives every tool with a fake token, so nothing can be read or changed; it still catches drift because REST answers 401 for routes that exist (404 otherwise) and GraphQL validates documents, input fields and enum values before auth. `test:live:signed-in` builds its client without a refresher, so it can't trigger a sign-in. Run `test:live` after touching any query, mutation, request body or enum.
 - `dist/` is gitignored, so a client pointed at `dist/server.js` runs whatever was built last. After pulling or switching branches, rebuild, then restart the MCP client.
 - One entry point serves both roles. `node dist/server.js <subcommand>` runs the CLI: `login`, `refresh [--headed]`, `paste`, `save-password`, `whoami`, `logout`, `help`. With no subcommand it starts the MCP server: stdio by default, or Streamable HTTP with `WAVE_MCP_TRANSPORT=http` on `WAVE_MCP_BIND`:`WAVE_MCP_PORT` (default `127.0.0.1:8765`).
 - `npx waveapps-mcp ...` only resolves inside the repo. User-facing hints come from `cliCommand()` in `src/util/cli-command.ts`, which gives `node <path>/dist/server.js <subcommand>` when the server was started that way. Use it for any new hint; don't hardcode a command.
@@ -45,8 +48,10 @@ npx playwright install chromium    # once, before login or refresh
 - Every request sends `Authorization: Bearer <waveapps cookie>`. Mutations also need `x-csrftoken: <identity-csrftoken cookie>`. Without a CSRF token, reads still work and mutating calls throw before any request goes out.
 - REST takes the plain business UUID in the path. GraphQL wants Relay global IDs, in two shapes: `base64("Business:<uuid>")` for top-level entities and `base64("Business:<uuid>;Customer:<int>")` for things inside a business. Use the helpers in `src/client/ids.ts`.
 - Businesses, invoices and products go through REST. Customers, estimates, bills and receipts go through GraphQL.
-- REST pages with `page` and `page_size`; totals come back in the `X-Total-Count` and `X-Total-Pages` headers.
+- REST pages with `page` and `page_size`. Wave sends the total in `X-Total-Count` but no `X-Total-Pages`, so `getPaged` derives `totalPages`.
 - Invoice line-item taxes must be `[{ sales_tax: { id: <int> } }]`. A bare integer gets a 400 (fixed in #1).
+- Estimate line-item taxes must be `[{ salesTaxId: <SalesTax Relay ID> }]`. The Relay ID is `base64("Business:<uuid>;SalesTax:<int>")`, and the integer is the same `sales_tax.id` invoices use.
+- GraphQL introspection is off. To check a field, input or enum value, send it with no session: a validation or `VARIABLE_VALUE` error names the problem (often with a "Did you mean" hint), and `UNAUTHENTICATED` means it's valid.
 - An expired token gets a 401 or 403 from REST, but GraphQL answers HTTP 200 with `errors[].extensions.code === 'UNAUTHENTICATED'`. `isAuthFailure()` in `src/client/graphql.ts` handles both.
 - A `wave_auth_token` cookie with the literal value `invalidated` is a red herring.
 

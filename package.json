@@ -47,6 +47,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "test:live:signed-in": "vitest run --config vitest.live.config.ts --mode signed-in",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "prepare": "node scripts/install-git-hooks.mjs",
