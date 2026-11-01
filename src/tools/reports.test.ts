@@ -80,6 +80,36 @@ describe('registerReportTools', () => {
     }
   });
 
+  it('wave_export_report runs the same report, names the business and embeds a CSV', async () => {
+    const { stub, mock } = setup();
+    mock.rest.get.mockResolvedValueOnce({ id: BUSINESS_UUID, company_name: 'Shy Owl Studios' });
+    const result = (await stub.invoke('wave_export_report', { report: 'profit_and_loss', startDate: '2026-01-01', endDate: '2026-11-01', format: 'csv' })) as {
+      content: Array<Record<string, any>>;
+    };
+    expect(mock.rest.post.mock.calls[0]![0]).toBe(`/businesses/${BUSINESS_UUID}/reports/profit_and_loss/`);
+    expect(mock.rest.get).toHaveBeenCalledWith(`/businesses/${BUSINESS_UUID}/`);
+    const meta = JSON.parse(result.content[0]!['text']);
+    expect(meta).toMatchObject({ report: 'profit_and_loss', startDate: '2026-01-01', endDate: '2026-11-01', basis: 'accrual', detail: 'summary', format: 'csv', mimeType: 'text/csv', embedded: true });
+    expect(meta.fileName).toMatch(/^profit_and_loss-\d{4}-\d{2}-\d{2}\.csv$/);
+    const resource = result.content[1]!['resource'];
+    expect(resource.mimeType).toBe('text/csv');
+    expect(resource.text).toBe(
+      'Profit and Loss\r\nShy Owl Studios\r\nDate Range: 2026-01-01 to 2026-11-01\r\nReport Type: Accrual (Paid & Unpaid)\r\n""\r\nACCOUNTS,"Jan 1, 2026 to Nov 1, 2026"\r\nIncome,1000.00\r\nGross Profit,1000.00\r\n',
+    );
+  });
+
+  it('wave_export_report embeds a PDF as base64 and says "As of" for point-in-time reports', async () => {
+    const { stub, mock } = setup({ overview: {}, reports: { summary: [], detailed: null } });
+    mock.rest.get.mockResolvedValueOnce({ id: BUSINESS_UUID, company_name: 'Shy Owl Studios' });
+    const result = (await stub.invoke('wave_export_report', { report: 'aged_payables', asOf: '2026-10-31', format: 'pdf' })) as { content: Array<Record<string, any>> };
+    const meta = JSON.parse(result.content[0]!['text']);
+    expect(meta).toMatchObject({ report: 'aged_payables', asOf: '2026-10-31', format: 'pdf', mimeType: 'application/pdf', embedded: true });
+    expect(meta).not.toHaveProperty('basis');
+    const resource = result.content[1]!['resource'];
+    expect(resource).toMatchObject({ uri: expect.stringMatching(/^wave-export:\/\/\/aged_payables-/), mimeType: 'application/pdf' });
+    expect(Buffer.from(resource.blob, 'base64').subarray(0, 5).toString()).toBe('%PDF-');
+  });
+
   it('labels a headline figure by its key when Wave leaves the name empty', async () => {
     const raw = { overview: { balance_after_payments: { name: '', balance: { currency: { code: 'CAD' }, value: '5.00' } }, comparison_mode: false }, reports: { summary: [] } };
     const { stub } = setup(raw);

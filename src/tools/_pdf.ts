@@ -43,3 +43,12 @@ export function pdfResult(file: PdfFile, summary: Record<string, unknown>): Call
   }
   return { content };
 }
+
+/** A tool result carrying a file the server built itself (CSV as text, anything else as base64), plus a JSON summary. */
+export function fileResult(fileName: string, mimeType: string, body: string | Uint8Array, summary: Record<string, unknown>): CallToolResult {
+  const bytes = typeof body === 'string' ? Buffer.byteLength(body, 'utf8') : body.byteLength;
+  const meta = { ...summary, fileName, mimeType, bytes, embedded: true };
+  const uri = `wave-export:///${encodeURIComponent(fileName)}`;
+  const resource = typeof body === 'string' ? { uri, mimeType, text: body } : { uri, mimeType, blob: Buffer.from(body).toString('base64') };
+  return { content: [{ type: 'text', text: JSON.stringify(meta, null, 2) }, { type: 'resource', resource }] };
+}

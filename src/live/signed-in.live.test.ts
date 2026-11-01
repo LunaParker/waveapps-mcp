@@ -290,6 +290,22 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
     expect(out.sections.some((s) => s.rows.length > 0)).toBe(true);
   });
 
+  it.each(['csv', 'pdf'] as const)('wave_export_report renders profit and loss as %s', async (format) => {
+    const result = (await tools.invoke('wave_export_report', { businessId, report: 'profit_and_loss', format })) as { content: Array<Record<string, any>> };
+    expect(JSON.parse(result.content[0]!['text'])).toMatchObject({ report: 'profit_and_loss', format, embedded: true });
+    const resource = result.content[1]!['resource'];
+    if (format === 'csv') {
+      expect(resource.mimeType).toBe('text/csv');
+      const lines = resource.text.split('\r\n');
+      expect(lines[0]).toBe('Profit and Loss');
+      expect(lines[2]).toMatch(/^Date Range: \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$/);
+      expect(lines).toContain('""');
+    } else {
+      expect(resource.mimeType).toBe('application/pdf');
+      expect(Buffer.from(resource.blob, 'base64').subarray(0, 5).toString()).toBe('%PDF-');
+    }
+  });
+
   it('wave_list_transactions and wave_get_transaction give accounts by their wave_list_accounts ids', async () => {
     const Account = z.object({ id: IntId.nullable(), relayId: z.string(), name: z.string() });
     const Tx = z.object({ id: z.string(), date: z.string(), sequence: z.number().int(), direction: z.string(), account: Account.nullable(), lines: z.array(z.object({ account: Account.nullable(), itemType: z.string() })) });
