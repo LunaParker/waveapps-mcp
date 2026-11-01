@@ -139,7 +139,8 @@ function readSecret(store: SecretStore, name: 'password' | 'totp-secret'): strin
 }
 
 export type { WaveAuth } from './auth.js';
-export { authFromEnv, loadAuth } from './auth.js';
+export { loadAuth } from './auth.js';
 export type { PageMeta, Paged, QueryParams } from './types.js';
-export { WaveError, WaveAuthError, WaveApiError, WaveGraphQLError } from './errors.js';
+export type { WaveGraphQLErrorEntry, WaveInputError } from './errors.js';
+export { WaveError, WaveAuthError, WaveApiError, WaveGraphQLError, WaveMutationError, requireDidSucceed } from './errors.js';
 export { toGlobalId, fromGlobalId, toCompositeGlobalId, fromCompositeGlobalId, isUuid, assertUuid } from './ids.js';

@@ -25,7 +25,7 @@ npx playwright install chromium    # once, before login or refresh
 - `npm run dev` runs `tsx watch src/server.ts`.
 - The live suites (`src/live/`, `vitest.live.config.ts`) never run in `npm test` or CI. `test:live` drives every tool with a fake token, so nothing can be read or changed; it still catches drift because REST answers 401 for routes that exist (404 otherwise) and GraphQL validates documents, input fields and enum values before auth. `test:live:signed-in` builds its client without a refresher, so it can't trigger a sign-in. Run `test:live` after touching any query, mutation, request body or enum.
 - `dist/` is gitignored, so a client pointed at `dist/server.js` runs whatever was built last. After pulling or switching branches, rebuild, then restart the MCP client.
-- One entry point serves both roles. `node dist/server.js <subcommand>` runs the CLI: `login`, `refresh [--headed]`, `paste`, `save-password`, `whoami`, `logout`, `help`. With no subcommand it starts the MCP server: stdio by default, or Streamable HTTP with `WAVE_MCP_TRANSPORT=http` on `WAVE_MCP_BIND`:`WAVE_MCP_PORT` (default `127.0.0.1:8765`).
+- One entry point serves both roles. `node dist/server.js <subcommand>` runs the CLI: `login`, `refresh [--headed]`, `paste`, `save-password`, `whoami`, `logout`, `help`. With no subcommand it starts the MCP server: stdio by default, or Streamable HTTP with `WAVE_MCP_TRANSPORT=http` on `WAVE_MCP_BIND`:`WAVE_MCP_PORT` (default `127.0.0.1:8765`). `WAVE_MCP_HTTP_TOKEN` is required when `WAVE_MCP_BIND` is not a loopback address, and once it is set every request must carry it as a bearer token. Loopback listeners also reject `Host` headers whose hostname is not a loopback address (`hostnameOf()` strips the port, so tunnels on other ports work; this is the DNS-rebinding guard), and every listener rejects bodies over 1 MiB with a 413 after draining up to 8 MiB.
 - `npx waveapps-mcp ...` only resolves inside the repo. User-facing hints come from `cliCommand()` in `src/util/cli-command.ts`, which gives `node <path>/dist/server.js <subcommand>` when the server was started that way. Use it for any new hint; don't hardcode a command.
 - To check the server starts without touching Wave, send `initialize` and `tools/list` over stdin. Neither calls Wave, and the process exits when stdin closes:
 
@@ -37,9 +37,9 @@ npx playwright install chromium    # once, before login or refresh
 
 - `src/server.ts`: dispatches CLI subcommands, otherwise builds an `McpServer` and a `WaveClient` and starts a transport.
 - `src/client/`: `WaveClient` with `rest` (`api.waveapps.com`) and `gql` (`gql.waveapps.com/graphql/internal`), auth loading, Relay ID helpers (`ids.ts`) and error classes.
-- `src/tools/`: one file per area, all registered in `tools/index.ts`. GraphQL documents live in `_queries.ts` and `_mutations.ts`; `_test_utils.ts` holds the mocked client the tool tests use.
+- `src/tools/`: one file per area (`businesses`, `invoices`, `payments`, `accounts`, `customers`, `estimates`, `products`, `bills`, `receipts`), all registered in `tools/index.ts`. GraphQL documents live in `_queries.ts` and `_mutations.ts`; `_invoice-body.ts` builds the REST invoice body and maps a stored invoice back into update arguments; `_shape.ts` holds the output shapers that trim Wave's records before a tool returns them (pure functions, `null` for a missing scalar, `[]` for a missing list; invoice settings pass through as Wave sends them, and `wave_list_invoices` and `wave_get_invoice` take `raw: true` to skip the shapers); `_test_utils.ts` holds the mocked client the tool tests use.
 - `src/auth/`: the credentials file, the OS credential store, Playwright launch, the Auth0 sign-in, the profile lock and TOTP.
-- `src/cli/`: the subcommands. `src/transports/`: stdio and HTTP.
+- `src/cli/`: the subcommands, plus `sanitise.ts` (trim pasted values and strip one pair of surrounding quotes) and `secret-line.ts` (hidden input collected as bytes and decoded as UTF-8 once, so non-ASCII passwords survive). `src/transports/`: stdio and HTTP. `src/util/`: `dates.ts` (`todayIso` for the local calendar day, never `new Date().toISOString().slice(0, 10)`, which gives the UTC day; `addDays` for day arithmetic on YYYY-MM-DD strings), `log.ts`, `env.ts`, `cli-command.ts`.
 - `scripts/`: the pre-commit secret scan, its installer and `smoke.ts`.
 - `docs/` and `NOTES.md` are local-only and gitignored on purpose: they hold captured internal GraphQL queries, real IDs and working notes. Read them when present. Never commit them, and never copy captured queries or IDs from them into tracked files.
 
@@ -51,6 +51,9 @@ npx playwright install chromium    # once, before login or refresh
 - REST pages with `page` and `page_size`. Wave sends the total in `X-Total-Count` but no `X-Total-Pages`, so `getPaged` derives `totalPages`.
 - Invoice line-item taxes must be `[{ sales_tax: { id: <int> } }]`. A bare integer gets a 400 (fixed in #1).
 - Estimate line-item taxes must be `[{ salesTaxId: <SalesTax Relay ID> }]`. The Relay ID is `base64("Business:<uuid>;SalesTax:<int>")`, and the integer is the same `sales_tax.id` invoices use.
+- Invoice settings (`GET /businesses/{id}/invoices/settings/`) carry the workspace defaults: `default_payment_terms` is a number of days, `default_item_title` / `default_quantity_title` / `default_price_title` / `default_amount_title` are the column headings, `default_title` the number label, `default_subheading`, `default_footer` and `standard_memo` the text. `wave_create_invoice` reads them, and the business's `primary_currency`, for anything the caller leaves out.
+- A business's `invoice_sending_emails[]` lists the sender addresses Wave accepts; only `verified: true` ones work as `fromAddress` on `invoiceSend`.
+- GraphQL mutations answer HTTP 200 with `didSucceed: false` and `inputErrors[]` when Wave refuses; `requireDidSucceed()` in `src/client/errors.ts` turns that into a `WaveMutationError` whose message lists them.
 - GraphQL introspection is off. To check a field, input or enum value, send it with no session: a validation or `VARIABLE_VALUE` error names the problem (often with a "Did you mean" hint), and `UNAUTHENTICATED` means it's valid.
 - An expired token gets a 401 or 403 from REST, but GraphQL answers HTTP 200 with `errors[].extensions.code === 'UNAUTHENTICATED'`. `isAuthFailure()` in `src/client/graphql.ts` handles both.
 - A `wave_auth_token` cookie with the literal value `invalidated` is a red herring.
@@ -74,8 +77,8 @@ This is the fragile part, and Wave changes it without notice.
 
 - The config dir is `~/.config/waveapps-mcp/`, overridable with `WAVE_MCP_CONFIG_DIR`. It holds `credentials.json` (token, CSRF token, business ID and email, mode `0600`), `chromium-profile/` and `sign-in.lock`.
 - The password and TOTP secret live in the OS credential store through `@napi-rs/keyring`, under service `waveapps-mcp` with accounts `password` and `totp-secret`. Older versions kept them in `credentials.json`; `migrateLegacySecrets()` moves them over on first run.
-- Environment variables: `WAVE_AUTH_TOKEN`, `WAVE_CSRF_TOKEN` and `WAVE_BUSINESS_ID` override the stored values. `WAVE_MCP_BROWSER_PATH` points at another Chromium. `WAVE_MCP_LOG_LEVEL` sets log verbosity. Add the transport variables above.
-- Nothing loads `.env`. `.env.example` documents the variables, but they only take effect if the shell or the MCP client config sets them.
+- Environment variables: `WAVE_AUTH_TOKEN`, `WAVE_CSRF_TOKEN` and `WAVE_BUSINESS_ID` override the stored values. `WAVE_MCP_BROWSER_PATH` points at another Chromium. `WAVE_MCP_LOG_LEVEL` sets log verbosity. `WAVE_MCP_TRANSPORT` picks stdio or HTTP; `WAVE_MCP_BIND`, `WAVE_MCP_PORT` and `WAVE_MCP_HTTP_TOKEN` configure HTTP.
+- Nothing loads `.env`, and no example env file ships: the README's Configuration table documents the variables, which only take effect when the shell or the MCP client config sets them.
 
 ## Rules for agents
 
@@ -89,7 +92,8 @@ This is the fragile part, and Wave changes it without notice.
 ## Code conventions
 
 - ESM with `NodeNext`: relative imports end in `.js`, and type-only imports use `import type` (`verbatimModuleSyntax`). `strict` and `noUncheckedIndexedAccess` are on.
-- Tools are registered as `server.registerTool('wave_<verb>_<noun>', { title, description, inputSchema, annotations }, handler)`, with zod input schemas and `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint` set honestly. Handlers return `jsonResult(...)` and throw on failure; the SDK turns a throw into an error result.
+- Tools are registered as `server.registerTool('wave_<verb>_<noun>', { title, description, inputSchema, annotations }, handler)`, with zod input schemas (zod 4: `z.uuid()` and `z.email()`, not the deprecated `z.string().uuid()` forms; no `.passthrough()`) and `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint` set honestly. Handlers return `jsonResult(...)` of a small object, with any Wave record in it passed through a `_shape.ts` shaper, and throw on failure; the SDK turns a throw into an error result, and the live contract tests rely on handlers throwing `WaveAuthError`, so no try/catch in handlers. GraphQL mutation payloads go through `requireDidSucceed()`.
+- Tool descriptions are read by the model, so they say what the tool does, where its ids come from (naming the tool and output field) and what the defaults are, and leave out REST paths and operation names.
 - Tests sit next to the code as `*.test.ts` and are excluded from `tsc`. New tests use `toThrow`, not the deprecated `toThrowError`.
 - `writeFileSync`'s `mode` applies only when it creates the file. After rewriting an existing secrets file, `chmodSync` it back to `0600`.
 - The HTTP transport keeps one transport and one `McpServer` per `mcp-session-id`, because the SDK refuses to reuse a stateless transport across requests (fixed in #2).

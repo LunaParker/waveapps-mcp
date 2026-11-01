@@ -8,10 +8,9 @@ coverage/
 .nyc_output/
 
 # ─── Secrets / environment ───────────────────────────────────────────────────
-# `.env.example` is intentionally tracked (template). Real env files are not.
+# Nothing in this project loads .env files; keep any local ones out of git regardless.
 .env
 .env.*
-!.env.example
 
 # Credentials should live in `~/.config/waveapps-mcp/credentials.json`, NOT here —
 # but defensively block anything resembling a credential file from being added.

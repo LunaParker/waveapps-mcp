@@ -2,6 +2,7 @@ import { credentialsPath, patchCredentials, readCredentials } from '../auth/cred
 import { secretStore, type SecretStore } from '../auth/secrets.js';
 import { totp } from '../auth/totp.js';
 import { Prompter, type PromptIo } from './prompter.js';
+import { sanitise } from './sanitise.js';
 import { cliCommand } from '../util/cli-command.js';
 
 export interface RunSavePasswordDeps {
@@ -160,14 +161,4 @@ export async function runSavePassword(
   } finally {
     io.close?.();
   }
-}
-
-function sanitise(raw: string): string {
-  let v = raw.trim();
-  if (v.length >= 2) {
-    const f = v[0];
-    const l = v[v.length - 1];
-    if ((f === '"' && l === '"') || (f === "'" && l === "'")) v = v.slice(1, -1).trim();
-  }
-  return v;
 }

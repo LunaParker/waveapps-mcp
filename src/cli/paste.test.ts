@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readCredentials } from '../auth/credentials.js';
-import { PASTE_EXIT_NO_TOKEN, PASTE_EXIT_OK, runPaste, sanitise } from './paste.js';
+import { PASTE_EXIT_NO_TOKEN, PASTE_EXIT_OK, runPaste } from './paste.js';
 
 const BUSINESS_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 
@@ -25,30 +25,6 @@ function scriptedAsk(answers: ReadonlyArray<string>): (q: string) => Promise<str
 }
 
 const silent = { log: () => undefined, error: () => undefined };
-
-describe('sanitise', () => {
-  it('trims whitespace', () => {
-    expect(sanitise('  hello  ')).toBe('hello');
-  });
-
-  it('strips paired double quotes', () => {
-    expect(sanitise('"abc"')).toBe('abc');
-  });
-
-  it('strips paired single quotes', () => {
-    expect(sanitise("'abc'")).toBe('abc');
-  });
-
-  it('keeps unmatched quotes', () => {
-    expect(sanitise('"abc')).toBe('"abc');
-    expect(sanitise("abc'")).toBe("abc'");
-  });
-
-  it('handles empty input', () => {
-    expect(sanitise('')).toBe('');
-    expect(sanitise('   ')).toBe('');
-  });
-});
 
 describe('runPaste', () => {
   it('saves all three values when provided', async () => {

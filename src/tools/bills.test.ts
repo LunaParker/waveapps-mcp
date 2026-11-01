@@ -3,6 +3,14 @@ import { registerBillTools } from './bills.js';
 import { BILLS_QUERY } from './_queries.js';
 import { BUSINESS_GLOBAL_ID, createMockClient, createStubServer } from './_test_utils.js';
 
+const RAW_BILL = {
+  id: 'bill1', billerId: 'vendor1', dueDate: '2026-02-20', billDate: '2026-02-01',
+  currency: { name: 'Canadian dollar', code: 'CAD', symbol: '$', exponent: 2, __typename: 'Currency' },
+  amountDue: '50.00', amountPaid: '0.00', subtotal: '44.25', total: '50.00', billNumber: 'B-9', vendorIsContractor: false,
+  linkedToPayroll: false, eligibleForDirectDeposit: false, payrollId: null, depositStatus: null, paymentStatus: 'UNPAID',
+  linkedToTaxForm: false, vendorPayrollId: null, checkPayrollId: null, __typename: 'Bill',
+};
+
 describe('registerBillTools', () => {
   it('registers wave_list_bills', () => {
     const stub = createStubServer();
@@ -18,8 +26,8 @@ describe('registerBillTools', () => {
       business: {
         id: BUSINESS_GLOBAL_ID,
         bills: {
-          pageInfo: { totalCount: 0 },
-          edges: [],
+          pageInfo: { totalCount: 1 },
+          edges: [{ node: RAW_BILL }],
           businessSupportsContractorPayments: false,
         },
       },
@@ -33,8 +41,10 @@ describe('registerBillTools', () => {
     expect(call.variables.sort).toBe('BILL_DATE_DESC');
     expect(call.variables.page).toBe(1);
     expect(call.variables.pageSize).toBe(25);
-    expect(out).toHaveProperty('bills');
-    expect(out).toHaveProperty('totalCount', 0);
+    expect(out).toEqual({
+      bills: [{ id: 'bill1', billNumber: 'B-9', billDate: '2026-02-01', dueDate: '2026-02-20', currency: 'CAD', subtotal: '44.25', total: '50.00', amountDue: '50.00', amountPaid: '0.00', paymentStatus: 'UNPAID', vendorId: 'vendor1', vendorIsContractor: false }],
+      totalCount: 1,
+    });
   });
 
   it('flows optional vendor + date filters', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { errorResult, flattenConnection, jsonResult } from './_helpers.js';
+import { flattenConnection, jsonResult } from './_helpers.js';
 
 describe('jsonResult', () => {
   it('returns text content with pretty-printed JSON', () => {
@@ -8,14 +8,6 @@ describe('jsonResult', () => {
       { type: 'text', text: JSON.stringify({ a: 1, b: 'x' }, null, 2) },
     ]);
     expect(r.isError).toBeUndefined();
-  });
-});
-
-describe('errorResult', () => {
-  it('marks isError and wraps the message as text content', () => {
-    const r = errorResult('something broke');
-    expect(r.isError).toBe(true);
-    expect(r.content).toEqual([{ type: 'text', text: 'something broke' }]);
   });
 });
 

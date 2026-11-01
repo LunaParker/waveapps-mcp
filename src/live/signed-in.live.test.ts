@@ -24,9 +24,12 @@ const Business = z
     company_name: z.string(),
     is_personal: z.boolean(),
     is_default_business: z.boolean(),
-    primary_currency: z.object({ code: z.string().length(3) }).passthrough(),
+    currency: z.string().length(3),
   })
   .passthrough();
+
+// Wave's untrimmed business record, which beforeAll reads directly to pick the business under test.
+const RawBusiness = z.object({ id: Uuid, is_personal: z.boolean(), is_default_business: z.boolean() });
 
 const RestCustomer = z.object({ id: IntId, name: z.string() }).passthrough();
 
@@ -39,7 +42,7 @@ const InvoiceSummary = z
     due_date: IsoDate,
     invoice_total: z.number(),
     invoice_amount_due: z.number(),
-    invoice_currency: z.object({ code: z.string().length(3) }).passthrough(),
+    currency: z.string().length(3),
     customer: RestCustomer,
   })
   .passthrough();
@@ -83,17 +86,13 @@ const GqlCustomer = z.object({ id: z.string(), internalId: NumericString, name: 
 const Estimate = z
   .object({ id: z.string(), status: z.string(), estimateNumber: z.string(), customer: z.object({ id: z.string() }).passthrough() })
   .passthrough();
-const EstimateBucket = z.object({
-  items: z.array(Estimate),
-  pageInfo: OffsetPageInfo.extend({ totalCount: z.number().int() }),
-});
 
 const Bill = z
-  .object({ id: z.string(), billNumber: z.string(), billDate: IsoDate, total: z.string(), currency: z.object({ code: z.string() }).passthrough() })
+  .object({ id: z.string(), billNumber: z.string(), billDate: IsoDate, total: z.string(), currency: z.string() })
   .passthrough();
 
 const Receipt = z
-  .object({ id: z.string(), amount: z.unknown(), currency: z.object({ code: z.string() }).passthrough(), dateCreated: z.string() })
+  .object({ id: z.string(), amount: z.unknown(), currency: z.string(), dateCreated: z.string() })
   .passthrough();
 
 describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:signed-in)', () => {
@@ -112,9 +111,9 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
     const client = new WaveClient(loadAuth());
     tools = createStubServer();
     registerAllTools(tools.server as never, client);
-    let listed: z.infer<typeof Business>[];
+    let listed: z.infer<typeof RawBusiness>[];
     try {
-      listed = z.array(Business).parse(await client.rest.get('/businesses/', { include_personal: true }));
+      listed = z.array(RawBusiness).parse(await client.rest.get('/businesses/', { include_personal: true }));
     } catch (err) {
       if (err instanceof WaveAuthError) {
         throw new Error(`Wave session expired. Run \`${cliCommand('login')}\` to sign in again, then re-run.`);
@@ -169,6 +168,14 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
       expect(invoice.id).toBe(first.id);
     });
 
+    it('wave_get_invoice raw: true returns Wave\'s full record', async ({ skip }) => {
+      const page = await call('wave_list_invoices', z.object({ items: z.array(InvoiceSummary) }).passthrough(), { pageSize: 1 });
+      const first = page.items[0];
+      if (!first) return skip('no invoices to fetch');
+      const { invoice } = await call('wave_get_invoice', z.object({ invoice: z.object({ invoice_currency: z.object({ code: z.string() }).passthrough() }).passthrough() }), { invoiceId: first.id, raw: true });
+      expect(invoice.invoice_currency.code).toHaveLength(3);
+    });
+
     it('wave_get_invoice_settings', async () => {
       await call(
         'wave_get_invoice_settings',
@@ -210,10 +217,10 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
     await call('wave_list_customers', z.object({ customers: z.array(GqlCustomer), pageInfo: OffsetPageInfo }), { pageSize: 5 });
   });
 
-  it('wave_list_estimates returns all three buckets', async () => {
+  it('wave_list_estimates returns one trimmed list', async () => {
     await call(
       'wave_list_estimates',
-      z.object({ active: EstimateBucket, draft: EstimateBucket, all: EstimateBucket }),
+      z.object({ estimates: z.array(Estimate), pageInfo: OffsetPageInfo.extend({ totalCount: z.number().int() }) }),
       { pageSize: 5 },
     );
   });
@@ -221,14 +228,14 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
   it('wave_list_bills', async () => {
     const out = await call(
       'wave_list_bills',
-      z.object({ bills: z.array(Bill), totalCount: z.number().int(), businessSupportsContractorPayments: z.boolean() }),
+      z.object({ bills: z.array(Bill), totalCount: z.number().int() }),
       { pageSize: 5 },
     );
     expect(out.totalCount).toBeGreaterThanOrEqual(out.bills.length);
   });
 
   it('wave_list_receipts', async () => {
-    await call('wave_list_receipts', z.object({ receipts: z.array(Receipt), roles: z.array(z.string()) }), { first: 5 });
+    await call('wave_list_receipts', z.object({ receipts: z.array(Receipt) }), { first: 5 });
   });
 });
 

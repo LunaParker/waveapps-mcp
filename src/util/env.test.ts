@@ -1,27 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { optionalEnv, requireEnv } from './env.js';
+import { optionalEnv } from './env.js';
 
 const KEY = '__WAVE_TEST_KEY__';
-
-describe('requireEnv', () => {
-  afterEach(() => {
-    delete process.env[KEY];
-  });
-
-  it('returns the value when set', () => {
-    process.env[KEY] = 'hello';
-    expect(requireEnv(KEY)).toBe('hello');
-  });
-
-  it('throws when missing', () => {
-    expect(() => requireEnv(KEY)).toThrowError(`Missing required env var: ${KEY}`);
-  });
-
-  it('throws when empty', () => {
-    process.env[KEY] = '';
-    expect(() => requireEnv(KEY)).toThrowError(`Missing required env var: ${KEY}`);
-  });
-});
 
 describe('optionalEnv', () => {
   afterEach(() => {
