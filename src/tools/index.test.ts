@@ -31,6 +31,7 @@ describe('registerAllTools', () => {
       'wave_list_invoices',
       'wave_list_products',
       'wave_list_receipts',
+      'wave_list_sales_taxes',
       'wave_mark_invoice_sent',
       'wave_record_invoice_payment',
       'wave_send_invoice',
@@ -38,6 +39,6 @@ describe('registerAllTools', () => {
       'wave_update_invoice',
       'wave_update_product',
     ]);
-    expect(names).toHaveLength(28);
+    expect(names).toHaveLength(29);
   });
 });

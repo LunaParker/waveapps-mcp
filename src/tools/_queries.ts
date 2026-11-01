@@ -390,3 +390,37 @@ export const TRANSACTIONS_QUERY = `query GetTransactions($businessId: ID!, $filt
     __typename
   }
 }`;
+
+// Everything above was captured verbatim and stays that way. The operations below are the
+// exception: written for this server (Wave runs any document that validates), re-checked by `npm run test:live`.
+
+export const SALES_TAXES_QUERY = `query ListSalesTaxes($businessId: ID!, $page: Int!, $pageSize: Int!, $isArchived: Boolean) {
+  business(id: $businessId) {
+    id
+    salesTaxes(page: $page, pageSize: $pageSize, isArchived: $isArchived) {
+      pageInfo {
+        currentPage
+        totalPages
+        totalCount
+      }
+      edges {
+        node {
+          id
+          name
+          abbreviation
+          description
+          rate
+          isArchived
+          isCompound
+          isRecoverable
+          taxNumber
+          showTaxNumberOnInvoices
+          rates {
+            effective
+            rate
+          }
+        }
+      }
+    }
+  }
+}`;
