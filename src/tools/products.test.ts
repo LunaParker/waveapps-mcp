@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { registerProductTools } from './products.js';
+import { shapeProduct } from './_shape.js';
 import { BUSINESS_UUID, createMockClient, createStubServer } from './_test_utils.js';
+
+const RAW_PRODUCT = {
+  id: 601, url: 'u', name: 'Design', price: 100, description: 'd', is_sold: true, is_bought: false,
+  income_account: { id: 301, url: 'u' }, expense_account: null, active: true, date_created: 'x', date_modified: 'x', default_sales_taxes: [],
+};
+const TRIMMED_PRODUCT = {
+  id: 601, name: 'Design', description: 'd', price: 100, active: true, is_sold: true, is_bought: false,
+  income_account: { id: 301, name: null }, expense_account: null, default_sales_taxes: [],
+};
 
 describe('registerProductTools', () => {
   it('registers list, get, create, update, delete', () => {
@@ -17,16 +27,19 @@ describe('registerProductTools', () => {
   });
 
   describe('wave_list_products', () => {
-    it('passes pagination + active filter to REST GET', async () => {
+    it('passes pagination + active filter to REST GET and returns trimmed products', async () => {
       const stub = createStubServer();
       const mock = createMockClient();
-      mock.rest.getPaged.mockResolvedValueOnce({ items: [], meta: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
+      const meta = { page: 1, pageSize: 50, totalCount: 1, totalPages: 1 };
+      mock.rest.getPaged.mockResolvedValueOnce({ items: [RAW_PRODUCT], meta });
       registerProductTools(stub.server as never, mock.client);
-      await stub.invoke('wave_list_products', {});
+      const out = (await stub.parsed('wave_list_products', {})) as { items: unknown[]; meta: unknown };
       expect(mock.rest.getPaged).toHaveBeenCalledWith(
         `/businesses/${BUSINESS_UUID}/products/`,
         { page: 1, page_size: 50, sort: '-date_modified', active: true },
       );
+      expect(out.items).toEqual([TRIMMED_PRODUCT]);
+      expect(out.meta).toEqual(meta);
     });
 
     it('omits the active filter when activeOnly is false', async () => {
@@ -41,14 +54,14 @@ describe('registerProductTools', () => {
   });
 
   describe('wave_get_product', () => {
-    it('GETs /products/{id}/', async () => {
+    it('GETs /products/{id}/ and returns the trimmed product', async () => {
       const stub = createStubServer();
       const mock = createMockClient();
-      mock.rest.get.mockResolvedValueOnce({ id: 123, name: 'P' });
+      mock.rest.get.mockResolvedValueOnce(RAW_PRODUCT);
       registerProductTools(stub.server as never, mock.client);
-      const out = (await stub.parsed('wave_get_product', { productId: 123 })) as { product: { name: string } };
+      const out = (await stub.parsed('wave_get_product', { productId: 123 })) as { product: unknown };
       expect(mock.rest.get).toHaveBeenCalledWith(`/businesses/${BUSINESS_UUID}/products/123/`);
-      expect(out.product.name).toBe('P');
+      expect(out.product).toEqual(TRIMMED_PRODUCT);
     });
   });
 
@@ -56,14 +69,16 @@ describe('registerProductTools', () => {
     it('POSTs the captured shape with income_account wrapper when isSold', async () => {
       const stub = createStubServer();
       const mock = createMockClient();
-      mock.rest.post.mockResolvedValueOnce({ id: 134000176, name: 'Test' });
+      const created = { id: 134000176, name: 'Test' };
+      mock.rest.post.mockResolvedValueOnce(created);
       registerProductTools(stub.server as never, mock.client);
-      await stub.invoke('wave_create_product', {
+      const out = (await stub.parsed('wave_create_product', {
         name: 'Test',
         price: 1.0,
         description: 'created by waveapps-mcp probe',
         incomeAccountId: 729213118,
-      });
+      })) as { product: unknown };
+      expect(out.product).toEqual(shapeProduct(created));
       expect(mock.rest.post).toHaveBeenCalledWith(`/businesses/${BUSINESS_UUID}/products/`, {
         name: 'Test',
         price: 1.0,
@@ -113,13 +128,19 @@ describe('registerProductTools', () => {
     it('only sends fields that the caller supplied', async () => {
       const stub = createStubServer();
       const mock = createMockClient();
-      mock.rest.patch.mockResolvedValueOnce({});
+      const patched = { ...RAW_PRODUCT, price: 9.99, description: 'patched description' };
+      mock.rest.patch.mockResolvedValueOnce(patched);
       registerProductTools(stub.server as never, mock.client);
-      await stub.invoke('wave_update_product', { productId: 134000176, price: 9.99, description: 'patched description' });
+      const out = (await stub.parsed('wave_update_product', {
+        productId: 134000176,
+        price: 9.99,
+        description: 'patched description',
+      })) as { product: unknown };
       expect(mock.rest.patch).toHaveBeenCalledWith(
         `/businesses/${BUSINESS_UUID}/products/134000176/`,
         { price: 9.99, description: 'patched description' },
       );
+      expect(out.product).toEqual(shapeProduct(patched));
     });
 
     it('wraps incomeAccountId in the { id } shape', async () => {

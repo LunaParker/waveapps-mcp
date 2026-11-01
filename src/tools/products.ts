@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { WaveClient } from '../client/index.js';
 import { jsonResult } from './_helpers.js';
+import { shapeProduct } from './_shape.js';
 
 const ProductSort = z.enum(['name', '-name', 'date_created', '-date_created', 'date_modified', '-date_modified']);
 
@@ -11,9 +12,9 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
     {
       title: 'List Wave products & services',
       description:
-        'Lists products/services for a Wave business via REST (`GET /businesses/{id}/products/`). Each line item on an invoice references a product by integer `id`, so use this to find existing items before creating invoices. Filter by `active` to skip archived ones.',
+        'Lists products and services with price, income account and default taxes. A line on an invoice or estimate references a product by its integer `id`; pass `incomeAccountId` = `income_account.id`.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(200).default(50),
         sort: ProductSort.default('-date_modified'),
@@ -29,7 +30,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
         sort,
         active: activeOnly ? true : undefined,
       });
-      return jsonResult(paged);
+      return jsonResult({ items: paged.items.map(shapeProduct), meta: paged.meta });
     },
   );
 
@@ -37,9 +38,9 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
     'wave_get_product',
     {
       title: 'Get one Wave product',
-      description: 'Fetches a single product by integer ID. Useful for double-checking the `income_account.id` and `price` before referencing it on an invoice.',
+      description: 'Fetches one product by integer id, with its price, income account and default sales taxes.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         productId: z.number().int().positive(),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -47,7 +48,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
     async ({ businessId, productId }) => {
       const id = client.businessId(businessId);
       const product = await client.rest.get<unknown>(`/businesses/${id}/products/${productId}/`);
-      return jsonResult({ product });
+      return jsonResult({ product: shapeProduct(product) });
     },
   );
 
@@ -56,9 +57,9 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Create a Wave product or service',
       description:
-        'Creates a new product/service via `POST /businesses/{id}/products/`. The minimum required fields are `name`, `price`, and (for sellable items) an `incomeAccountId` from `wave_list_accounts`. Returns the full product including the new integer `id` you can hand to `wave_create_invoice`.',
+        'Creates a new product/service via `POST /businesses/{id}/products/`. The minimum required fields are `name`, `price`, and (for sellable items) an `incomeAccountId` from `wave_list_accounts`. Returns the product; its `id` is what invoice and estimate lines take as `productId`.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         name: z.string().min(1),
         price: z.number().nonnegative().describe('Default sale price as a decimal number (e.g. 150.00).'),
         description: z.string().default(''),
@@ -96,7 +97,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
       if (args.incomeAccountId !== undefined) body['income_account'] = { id: args.incomeAccountId };
       if (args.expenseAccountId !== undefined) body['expense_account'] = { id: args.expenseAccountId };
       const product = await client.rest.post<unknown>(`/businesses/${id}/products/`, body);
-      return jsonResult({ product });
+      return jsonResult({ product: shapeProduct(product) });
     },
   );
 
@@ -107,7 +108,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
       description:
         'Patches a product via `PATCH /businesses/{id}/products/{productId}/`. Only the fields you supply are changed — existing values are preserved. Useful for bumping the price of a recurring service or fixing a typo.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         productId: z.number().int().positive(),
         name: z.string().min(1).optional(),
         price: z.number().nonnegative().optional(),
@@ -139,7 +140,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
         `/businesses/${id}/products/${args.productId}/`,
         body,
       );
-      return jsonResult({ product });
+      return jsonResult({ product: shapeProduct(product) });
     },
   );
 
@@ -150,7 +151,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
       description:
         'Deletes a product via `DELETE /businesses/{id}/products/{productId}/`. Returns 204 on success. Wave preserves historical line items that referenced this product on past invoices — they stay readable, but new invoices won\'t be able to use it. Consider archiving (`wave_update_product` with `active: false`) instead of deleting.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         productId: z.number().int().positive(),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },

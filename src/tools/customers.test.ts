@@ -1,13 +1,26 @@
 import { describe, expect, it } from 'vitest';
+import { WaveMutationError } from '../client/errors.js';
 import { registerCustomerTools } from './customers.js';
 import { CUSTOMER_LIST_QUERY } from './_queries.js';
 import { CREATE_CUSTOMER_MUTATION, DELETE_CUSTOMER_MUTATION } from './_mutations.js';
 import {
   BUSINESS_GLOBAL_ID,
-  BUSINESS_UUID,
   createMockClient,
   createStubServer,
 } from './_test_utils.js';
+
+const RAW_CUSTOMER = (id: string, name: string, email: string) => ({
+  id, internalId: '201', displayId: '', name, firstName: '', lastName: '', email, fax: '', mobile: '', phone: '', tollFree: '',
+  website: '', internalNotes: '', currency: { code: 'CAD', symbol: '$', name: 'Canadian dollar', __typename: 'Currency' },
+  address: { addressLine1: '', addressLine2: '', city: '', province: null, country: { name: 'Canada', code: 'CA' }, postalCode: '' },
+  createdAt: 'x', modifiedAt: 'x', shippingDetails: null,
+  outstandingAmount: { value: '0.00', currency: { code: 'CAD' } }, overdueAmount: { value: '0.00', currency: { code: 'CAD' } },
+  additionalContacts: [], paymentMethodCards: [{ id: 'card', lastFourDigits: '4242' }], __typename: 'Customer',
+});
+
+function listResponse(nodes: unknown[], pageInfo = { currentPage: 1, totalPages: 1 }) {
+  return { business: { id: BUSINESS_GLOBAL_ID, customers: { pageInfo, edges: nodes.map((node) => ({ node })) } } };
+}
 
 describe('registerCustomerTools', () => {
   it('registers list, create, delete customer tools', () => {
@@ -21,21 +34,13 @@ describe('registerCustomerTools', () => {
     ]);
   });
 
-  it('wave_list_customers fires the verbatim Customer query with Relay business ID', async () => {
+  it('wave_list_customers fires the verbatim Customer query and returns trimmed customers', async () => {
     const stub = createStubServer();
     const mock = createMockClient();
-    mock.gql.execute.mockResolvedValueOnce({
-      business: {
-        id: BUSINESS_GLOBAL_ID,
-        customers: {
-          pageInfo: { currentPage: 1, totalPages: 1 },
-          edges: [{ node: { id: 'cust1', name: 'A' } }, { node: { id: 'cust2', name: 'B' } }],
-        },
-      },
-    });
+    mock.gql.execute.mockResolvedValueOnce(listResponse([RAW_CUSTOMER('cust1', 'A', 'a@example.com'), RAW_CUSTOMER('cust2', 'B', 'b@example.com')]));
     registerCustomerTools(stub.server as never, mock.client);
     const out = (await stub.parsed('wave_list_customers', { page: 2, pageSize: 50 })) as {
-      customers: ReadonlyArray<{ name: string }>;
+      customers: ReadonlyArray<Record<string, unknown>>;
       pageInfo: { currentPage: number };
     };
     expect(mock.gql.execute).toHaveBeenCalledWith({
@@ -44,25 +49,33 @@ describe('registerCustomerTools', () => {
       variables: { businessId: BUSINESS_GLOBAL_ID, page: 2, pageSize: 50 },
     });
     expect(out.customers).toHaveLength(2);
-    expect(out.customers[0]!.name).toBe('A');
+    expect(out.customers[0]).toMatchObject({ id: 'cust1', internalId: '201', name: 'A', email: 'a@example.com', currency: 'CAD' });
+    expect(out.customers[0]).not.toHaveProperty('paymentMethodCards');
+    expect(JSON.stringify(out)).not.toContain('4242');
+    expect(out.pageInfo).toEqual({ currentPage: 1, totalPages: 1 });
   });
 
-  it('wave_create_customer builds the canonical input shape', async () => {
+  it('wave_list_customers search fetches one big page and filters by name or email, case-insensitively', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    mock.gql.execute.mockResolvedValueOnce(
+      listResponse([RAW_CUSTOMER('c1', 'Acme Corp', 'ap@acme.example'), RAW_CUSTOMER('c2', 'Beta LLC', 'hello@beta.example'), RAW_CUSTOMER('c3', 'Gamma', 'acme-fan@gamma.example')]),
+    );
+    registerCustomerTools(stub.server as never, mock.client);
+    const out = (await stub.parsed('wave_list_customers', { search: 'ACME', page: 3, pageSize: 10 })) as { customers: Array<{ id: string }> };
+    expect(mock.gql.execute.mock.calls[0]![0].variables).toEqual({ businessId: BUSINESS_GLOBAL_ID, page: 1, pageSize: 500 });
+    expect(out.customers.map((c) => c.id)).toEqual(['c1', 'c3']);
+  });
+
+  it('wave_create_customer builds the canonical input shape and returns the trimmed customer', async () => {
     const stub = createStubServer();
     const mock = createMockClient();
     mock.gql.execute.mockResolvedValueOnce({
-      customerCreate: {
-        didSucceed: true,
-        inputErrors: null,
-        customer: { id: 'gid', internalId: 555, name: 'Test' },
-      },
+      customerCreate: { didSucceed: true, inputErrors: null, customer: RAW_CUSTOMER('gid', 'Test', 'test@example.com') },
     });
     registerCustomerTools(stub.server as never, mock.client);
-    const out = (await stub.parsed('wave_create_customer', {
-      name: 'Test',
-      email: 'test@example.com',
-    })) as { didSucceed: boolean };
-    expect(out.didSucceed).toBe(true);
+    const out = (await stub.parsed('wave_create_customer', { name: 'Test', email: 'test@example.com' })) as { customer: Record<string, unknown> };
+    expect(out.customer).toMatchObject({ id: 'gid', internalId: '201', name: 'Test' });
     const call = mock.gql.execute.mock.calls[0]![0];
     expect(call.operationName).toBe('CreateCustomer');
     expect(call.query).toBe(CREATE_CUSTOMER_MUTATION);
@@ -74,6 +87,16 @@ describe('registerCustomerTools', () => {
     expect(call.variables.input.currency).toBeNull();
     expect(call.variables.input.address.countryCode).toBeNull();
     expect(call.variables.input.shippingDetails).toBeNull();
+  });
+
+  it('wave_create_customer throws WaveMutationError with Wave\'s reason when didSucceed is false', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    mock.gql.execute.mockResolvedValueOnce({
+      customerCreate: { didSucceed: false, inputErrors: [{ message: 'A customer with this name already exists.', path: ['name'] }] },
+    });
+    registerCustomerTools(stub.server as never, mock.client);
+    await expect(stub.invoke('wave_create_customer', { name: 'Dup' })).rejects.toThrow(/name: A customer with this name already exists/);
   });
 
   it('wave_create_customer flows optional fields through', async () => {
@@ -126,7 +149,17 @@ describe('registerCustomerTools', () => {
     const stub = createStubServer();
     const mock = createMockClient();
     registerCustomerTools(stub.server as never, mock.client);
-    await expect(stub.invoke('wave_delete_customer', {})).rejects.toThrowError(/customerId/);
+    await expect(stub.invoke('wave_delete_customer', {})).rejects.toThrow(/customerId/);
     expect(mock.gql.execute).not.toHaveBeenCalled();
+  });
+
+  it('wave_delete_customer returns ok on success and throws on didSucceed: false', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    mock.gql.execute.mockResolvedValueOnce({ customerDelete: { didSucceed: true } });
+    mock.gql.execute.mockResolvedValueOnce({ customerDelete: { didSucceed: false, inputErrors: [{ message: 'Customer has invoices.' }] } });
+    registerCustomerTools(stub.server as never, mock.client);
+    expect(await stub.parsed('wave_delete_customer', { customerId: 1 })).toEqual({ ok: true });
+    await expect(stub.invoke('wave_delete_customer', { customerId: 1 })).rejects.toThrow(WaveMutationError);
   });
 });
