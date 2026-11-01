@@ -3,9 +3,9 @@
  * Pre-commit guard. Refuses to let a commit land if a staged file contains anything that
  * looks like a real Wave session token, password, or CSRF token.
  *
- *   • Exact-match block list — historical real tokens that have ever appeared in this
- *     project. Useful defence against accidentally re-committing a value that already
- *     leaked once during development.
+ *   • Hash block list — SHA-256 of historical real tokens that have ever appeared in this
+ *     project, so the tokens themselves never sit in the repo. Useful defence against
+ *     accidentally re-committing a value that already leaked once during development.
  *   • Heuristic block — long literals attached to known sensitive keys
  *     (authToken / password / csrfToken / totpSecret / Bearer …) that don't start with
  *     an obvious placeholder marker.
@@ -14,6 +14,7 @@
  * Emergency bypass: `git commit --no-verify`.
  */
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 const IGNORE_PATHS = [
@@ -23,15 +24,13 @@ const IGNORE_PATHS = [
   /^docs\//,
   /^\.git\//,
   /^package-lock\.json$/,
-  // The hook itself contains literal token examples for documentation; allowlist it.
-  /^scripts\/check-secrets\.mjs$/,
 ];
 
-/** Known-real tokens that have appeared in this project's session history. Even after
- * rotation, these are personally identifying — never re-commit. */
-const KNOWN_REAL_TOKENS = [
-  'tKWL4MKvWjVdZBfDAA70sCn4L5Vlbd',
-  '8YGXLRXNtcmZ7AtDdXtlDtkpa2sJgTn3',
+/** SHA-256 of real tokens from this project's session history. Even rotated they identify
+ * the account, so only hashes live here. Never re-commit the tokens. */
+const KNOWN_REAL_TOKEN_HASHES = [
+  { length: 30, sha256: 'a4922df93cf5274c3ace12a8ac641147ac48d45afeb52e876a096110bfa184ea' },
+  { length: 32, sha256: '4d5ed2df608a7157af642bd4c52b126700c173ca337b04b8a295ab939e641528' },
 ];
 
 /** Placeholder prefixes that mark a value as "obviously fake on purpose". */
@@ -69,6 +68,23 @@ const CONTEXTUAL_RULES = [
 const isPlaceholder = (value) =>
   PLACEHOLDER_PREFIXES.some((p) => value.startsWith(p));
 
+const sha256 = (value) => createHash('sha256').update(value).digest('hex');
+const mask = (value) => `${value.slice(0, 4)}…${value.slice(-2)}`;
+
+/** Windows of each known token's length, inside alphanumeric runs, whose hash is on the list. */
+function findKnownTokens(content) {
+  const found = [];
+  for (const run of content.matchAll(/[A-Za-z0-9]+/g)) {
+    for (const known of KNOWN_REAL_TOKEN_HASHES) {
+      for (let i = 0; i + known.length <= run[0].length; i += 1) {
+        const value = run[0].slice(i, i + known.length);
+        if (sha256(value) === known.sha256) found.push({ index: run.index + i, value });
+      }
+    }
+  }
+  return found;
+}
+
 function listStagedFiles() {
   const out = execSync('git diff --cached --name-only --diff-filter=ACMR', { encoding: 'utf8' });
   return out
@@ -98,13 +114,9 @@ for (const file of staged) {
     continue; // binary or unreadable
   }
 
-  // Block list — known real tokens
-  for (const token of KNOWN_REAL_TOKENS) {
-    let idx = content.indexOf(token);
-    while (idx !== -1) {
-      violation(file, lineNumberAt(content, idx), 'known real Wave token from project history', token);
-      idx = content.indexOf(token, idx + 1);
-    }
+  // Block list — known real tokens, matched by hash and reported masked
+  for (const { index, value } of findKnownTokens(content)) {
+    violation(file, lineNumberAt(content, index), 'known real Wave token from project history', mask(value));
   }
 
   // Heuristic rules
