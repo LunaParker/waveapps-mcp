@@ -176,6 +176,15 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
       expect(invoice.invoice_currency.code).toHaveLength(3);
     });
 
+    it('wave_get_invoice_pdf embeds the PDF of the latest invoice', async ({ skip }) => {
+      const page = await call('wave_list_invoices', z.object({ items: z.array(InvoiceSummary) }).loose(), { pageSize: 1 });
+      const first = page.items[0];
+      if (!first) return skip('no invoices to render');
+      const result = (await tools.invoke('wave_get_invoice_pdf', { businessId, invoiceId: first.id })) as { content: Array<Record<string, any>> };
+      expect(JSON.parse(result.content[0]!['text'])).toMatchObject({ invoiceId: first.id, embedded: true });
+      expect(Buffer.from(result.content[1]!['resource'].blob, 'base64').subarray(0, 5).toString()).toBe('%PDF-');
+    });
+
     it('wave_get_invoice_settings', async () => {
       await call(
         'wave_get_invoice_settings',
@@ -217,12 +226,37 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
     await call('wave_list_customers', z.object({ customers: z.array(GqlCustomer), pageInfo: OffsetPageInfo }), { pageSize: 5 });
   });
 
+  it('wave_get_customer reads one customer from the list', async ({ skip }) => {
+    const list = await call('wave_list_customers', z.object({ customers: z.array(GqlCustomer) }), { pageSize: 1 });
+    const first = list.customers[0];
+    if (!first) return skip('no customers to fetch');
+    const { customer } = await call(
+      'wave_get_customer',
+      z.object({ customer: z.object({ id: z.string(), internalId: NumericString, name: z.string(), additionalContacts: z.array(z.unknown()) }) }),
+      { customerGlobalId: first.id },
+    );
+    expect(customer.id).toBe(first.id);
+  });
+
   it('wave_list_estimates returns one trimmed list', async () => {
     await call(
       'wave_list_estimates',
       z.object({ estimates: z.array(Estimate), pageInfo: OffsetPageInfo.extend({ totalCount: z.number().int() }) }),
       { pageSize: 5 },
     );
+  });
+
+  it('wave_get_estimate gives the fields wave_update_estimate takes', async ({ skip }) => {
+    const list = await call('wave_list_estimates', z.object({ estimates: z.array(Estimate) }), { status: 'ALL', pageSize: 1 });
+    const first = list.estimates[0];
+    if (!first) return skip('no estimates to fetch');
+    const Item = z.object({ productId: IntId, name: z.string(), unitPrice: z.union([z.string(), z.number()]), incomeAccountClassicId: z.string() });
+    const { estimate } = await call(
+      'wave_get_estimate',
+      z.object({ estimate: z.object({ id: z.string(), status: z.string(), items: z.array(Item) }) }),
+      { estimateGlobalId: first.id },
+    );
+    expect(estimate.id).toBe(first.id);
   });
 
   it('wave_list_bills', async () => {
@@ -236,6 +270,75 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
 
   it('wave_list_receipts', async () => {
     await call('wave_list_receipts', z.object({ receipts: z.array(Receipt) }), { first: 5 });
+  });
+
+  it.each([
+    'profit_and_loss', 'balance_sheet', 'cash_flow', 'trial_balance', 'sales_tax',
+    'income_by_customer', 'purchases_by_vendor', 'account_balances', 'aged_receivables', 'aged_payables',
+  ])('wave_get_report %s comes back as labelled rows', async (report) => {
+    const Row = z.object({ type: z.string().nullable(), indent: z.number().nullable(), cells: z.array(z.string().nullable()) });
+    const out = await call(
+      'wave_get_report',
+      z.object({
+        report: z.literal(report),
+        detail: z.enum(['summary', 'detailed']),
+        overview: z.array(z.object({ label: z.string().nullable(), value: z.string().nullable() })),
+        sections: z.array(z.object({ columns: z.array(z.string().nullable()), rows: z.array(Row) })).min(1),
+      }),
+      { report },
+    );
+    expect(out.sections.some((s) => s.rows.length > 0)).toBe(true);
+  });
+
+  it.each(['csv', 'pdf'] as const)('wave_export_report renders profit and loss as %s', async (format) => {
+    const result = (await tools.invoke('wave_export_report', { businessId, report: 'profit_and_loss', format })) as { content: Array<Record<string, any>> };
+    expect(JSON.parse(result.content[0]!['text'])).toMatchObject({ report: 'profit_and_loss', format, embedded: true });
+    const resource = result.content[1]!['resource'];
+    if (format === 'csv') {
+      expect(resource.mimeType).toBe('text/csv');
+      const lines = resource.text.split('\r\n');
+      expect(lines[0]).toBe('Profit and Loss');
+      expect(lines[2]).toMatch(/^Date Range: \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2}$/);
+      expect(lines).toContain('""');
+    } else {
+      expect(resource.mimeType).toBe('application/pdf');
+      expect(Buffer.from(resource.blob, 'base64').subarray(0, 5).toString()).toBe('%PDF-');
+    }
+  });
+
+  it('wave_list_transactions and wave_get_transaction give accounts by their wave_list_accounts ids', async () => {
+    const Account = z.object({ id: IntId.nullable(), relayId: z.string(), name: z.string() });
+    const Tx = z.object({ id: z.string(), date: z.string(), sequence: z.number().int(), direction: z.string(), account: Account.nullable(), lines: z.array(z.object({ account: Account.nullable(), itemType: z.string() })) });
+    const list = await call('wave_list_transactions', z.object({ transactions: z.array(Tx), pageInfo: z.object({ hasNextPage: z.boolean() }).loose() }), { first: 5 });
+    const first = list.transactions[0];
+    if (!first) return;
+    const { transaction } = await call('wave_get_transaction', z.object({ transaction: Tx }), { transactionId: first.id });
+    expect(transaction.id).toBe(first.id);
+  });
+
+  it('wave_list_recurring_invoices and wave_get_recurring_invoice', async () => {
+    const Summary = z.object({ id: z.string(), state: z.string(), customerId: IntId.nullable(), currency: z.string(), paymentTerms: z.string() });
+    const list = await call('wave_list_recurring_invoices', z.object({ items: z.array(Summary), meta: PageMeta }), { pageSize: 5 });
+    const first = list.items[0];
+    if (!first) return;
+    const { recurringInvoice } = await call(
+      'wave_get_recurring_invoice',
+      z.object({ recurringInvoice: Summary.extend({ lineItems: z.array(z.object({ productId: IntId.nullable(), quantity: z.number() })) }) }),
+      { recurringInvoiceId: first.id },
+    );
+    expect(recurringInvoice.id).toBe(first.id);
+  });
+
+  it('wave_list_tags', async () => {
+    await call('wave_list_tags', z.object({ tags: z.array(z.object({ id: z.string(), name: z.string() })), pageInfo: z.object({ currentPage: z.number() }).loose() }));
+  });
+
+  it('wave_list_sales_taxes gives integer ids and numeric rates', async () => {
+    const SalesTax = z.object({ id: IntId, relayId: z.string(), name: z.string(), rate: z.number().nullable(), isArchived: z.boolean() });
+    const active = await call('wave_list_sales_taxes', z.object({ salesTaxes: z.array(SalesTax) }));
+    expect(active.salesTaxes.every((t) => !t.isArchived)).toBe(true);
+    const all = await call('wave_list_sales_taxes', z.object({ salesTaxes: z.array(SalesTax) }), { includeArchived: true });
+    expect(all.salesTaxes.length).toBeGreaterThanOrEqual(active.salesTaxes.length);
   });
 });
 

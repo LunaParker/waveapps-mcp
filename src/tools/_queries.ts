@@ -390,3 +390,253 @@ export const TRANSACTIONS_QUERY = `query GetTransactions($businessId: ID!, $filt
     __typename
   }
 }`;
+
+// Everything above was captured verbatim and stays that way. The operations below are the
+// exception: written for this server (Wave runs any document that validates), re-checked by `npm run test:live`.
+
+export const SALES_TAXES_QUERY = `query ListSalesTaxes($businessId: ID!, $page: Int!, $pageSize: Int!, $isArchived: Boolean) {
+  business(id: $businessId) {
+    id
+    salesTaxes(page: $page, pageSize: $pageSize, isArchived: $isArchived) {
+      pageInfo {
+        currentPage
+        totalPages
+        totalCount
+      }
+      edges {
+        node {
+          id
+          name
+          abbreviation
+          description
+          rate
+          isArchived
+          isCompound
+          isRecoverable
+          taxNumber
+          showTaxNumberOnInvoices
+          rates {
+            effective
+            rate
+          }
+        }
+      }
+    }
+  }
+}`;
+
+export const GET_ESTIMATE_QUERY = `query GetEstimate($businessId: ID!, $estimateId: ID!) {
+  business(id: $businessId) {
+    id
+    estimate(id: $estimateId) {
+      id
+      estimateNumber
+      status
+      title
+      subhead
+      estimateDate
+      dueDate
+      poNumber
+      memo
+      footer
+      currency {
+        code
+      }
+      exchangeRate
+      customer {
+        id
+        name
+        email
+      }
+      items {
+        id
+        product {
+          id
+          name
+        }
+        description
+        quantity
+        unitPrice
+        account {
+          classicId
+          name
+        }
+        subtotal {
+          value
+        }
+        total {
+          value
+        }
+        taxes {
+          salesTax {
+            id
+            name
+            abbreviation
+            rate
+          }
+          amount {
+            value
+          }
+        }
+      }
+      itemTitle
+      unitTitle
+      priceTitle
+      amountTitle
+      subtotal {
+        value
+      }
+      discountTotal {
+        value
+      }
+      taxTotal {
+        value
+      }
+      total {
+        value
+      }
+      amountDue {
+        value
+      }
+      amountPaid {
+        value
+      }
+      createdAt
+      lastSentAt
+      lastSentVia
+      lastViewedAt
+      viewUrl
+      dontCarryOverNotesToInvoice
+      disableCreditCardPayments
+      disableAmexPayments
+      depositStatus
+      depositUnit
+      depositValue
+      depositPaymentStatus
+    }
+  }
+}`;
+
+/** The customer fragments captured with CUSTOMER_LIST_QUERY, reused verbatim by single-customer reads and writes. */
+export const CUSTOMER_FRAGMENTS = CUSTOMER_LIST_QUERY.slice(CUSTOMER_LIST_QUERY.indexOf('fragment CustomerDetailFragment'));
+
+export const GET_CUSTOMER_QUERY = `query GetCustomer($businessId: ID!, $customerId: ID!) {
+  business(id: $businessId) {
+    id
+    customer(id: $customerId) {
+      ...CustomerFragment
+    }
+  }
+}
+
+${CUSTOMER_FRAGMENTS}`;
+
+const TRANSACTION_FIELDS = `id
+      date
+      description
+      notes
+      amount
+      direction
+      sequence
+      verificationStatus
+      missingFields
+      currency {
+        code
+      }
+      origin {
+        type
+      }
+      anchorLineItem {
+        order
+        account {
+          id
+          classicId
+          name
+        }
+        amount
+        itemType
+      }
+      lineItems {
+        order
+        account {
+          id
+          classicId
+          name
+        }
+        amount
+        itemType
+        description
+        customer {
+          id
+          name
+        }
+        tags {
+          id
+          name
+        }
+      }`;
+
+export const LIST_TRANSACTIONS_QUERY = `query ListTransactions($businessId: ID!, $first: Int, $after: String, $filters: TransactionFilter, $sort: [TransactionSort!]) {
+  business(id: $businessId) {
+    id
+    transactions(first: $first, after: $after, filters: $filters, sort: $sort) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      edges {
+        node {
+          ${TRANSACTION_FIELDS}
+        }
+      }
+    }
+  }
+}`;
+
+export const GET_TRANSACTION_QUERY = `query GetTransaction($businessId: ID!, $transactionId: ID!) {
+  business(id: $businessId) {
+    id
+    transaction(id: $transactionId) {
+      ${TRANSACTION_FIELDS}
+    }
+  }
+}`;
+
+/** Every active account with the integer id REST uses, so tools can take wave_list_accounts ids. */
+export const ACCOUNT_IDS_QUERY = `query ListAccountIds($businessId: ID!) {
+  business(id: $businessId) {
+    id
+    accounts(page: 1, pageSize: 500, isArchived: false) {
+      edges {
+        node {
+          id
+          classicId
+          name
+        }
+      }
+    }
+  }
+}`;
+
+export const LIST_TAGS_QUERY = `query ListTags($businessId: ID!, $pagination: AccountingTagsPaginationInput!, $filters: AccountingTagsFiltersInput) {
+  accountingTags(businessId: $businessId, pagination: $pagination, filters: $filters) {
+    edges {
+      node {
+        id
+        name
+        description
+        archived
+        group {
+          id
+          name
+        }
+      }
+    }
+    pageInfo {
+      currentPage
+      totalPages
+    }
+  }
+}`;
+
+export { TRANSACTION_FIELDS };

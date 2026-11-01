@@ -9,6 +9,8 @@ import {
   shapeInvoiceSummary,
   shapeProduct,
   shapeReceipt,
+  shapeSalesTaxSummary,
+  shapeEstimateRef,
   looksLikeInvoice,
 } from './_shape.js';
 
@@ -323,5 +325,33 @@ describe('shapeReceipt (GraphQL)', () => {
       missingFields: ['category'], attachment: { id: 'att1', thumbnailUrl: 'https://example.com/t.png' },
     });
     expect(shapeReceipt({ id: 'tx2', attachment: null }).attachment).toBeNull();
+  });
+});
+
+describe('shapeSalesTaxSummary (GraphQL)', () => {
+  it('decodes the integer id and turns decimal-string rates into numbers', () => {
+    const relayId = Buffer.from('Business:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee;SalesTax:401', 'utf8').toString('base64');
+    const shaped = shapeSalesTaxSummary({
+      id: relayId, name: 'GST', abbreviation: 'GST', description: null, rate: '0.05', isArchived: true,
+      rates: [{ effective: '2020-01-01', rate: '0.05', __typename: 'SalesTaxRate' }, { effective: null, rate: 'n/a' }], __typename: 'SalesTax',
+    });
+    expect(shaped).toEqual({
+      id: 401, relayId, name: 'GST', abbreviation: 'GST', description: null, rate: 0.05,
+      rates: [{ effective: '2020-01-01', rate: 0.05 }, { effective: null, rate: null }],
+      isArchived: true, isCompound: null, isRecoverable: null, taxNumber: null, showTaxNumberOnInvoices: null,
+    });
+  });
+
+  it('degrades to nulls on a malformed record', () => {
+    expect(shapeSalesTaxSummary({ id: 'not-base64-relay', rates: 'x' })).toMatchObject({ id: null, rates: [] });
+    expect(shapeSalesTaxSummary(null).id).toBeNull();
+  });
+});
+
+describe('shapeEstimateRef (GraphQL)', () => {
+  it('keeps id, decoded internal id, number and status', () => {
+    const id = Buffer.from('Business:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee;Estimate:77', 'utf8').toString('base64');
+    expect(shapeEstimateRef({ id, estimateNumber: '12', status: 'APPROVED', __typename: 'Estimate' })).toEqual({ id, internalId: '77', estimateNumber: '12', status: 'APPROVED' });
+    expect(shapeEstimateRef(null)).toBeNull();
   });
 });

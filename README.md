@@ -13,7 +13,7 @@ This is an add-on that lets you ask **Claude** (or any other AI assistant that s
 
 …and Claude creates the invoice in Wave for you. Same for recording payments, adding customers, looking up old estimates, and so on.
 
-It works by giving Claude a set of 28 structured tools that map onto real Wave operations. Claude picks the right tools and calls them with the right arguments based on your conversation.
+It works by giving Claude a set of 58 structured tools that map onto real Wave operations. Claude picks the right tools and calls them with the right arguments based on your conversation.
 
 > **What's "MCP"?** [Model Context Protocol](https://modelcontextprotocol.io) is a standard way for AI assistants to call external tools. Anthropic's Claude apps speak it natively; so do Cursor, Continue, and a growing list of others.
 
@@ -25,16 +25,23 @@ Once it's installed, you can ask Claude to:
 - List your Wave workspaces (businesses)
 - List invoices, estimates, bills and receipts; list or search customers by name or email
 - List or look up products & services (the line items you put on invoices)
-- Pull the full details of a single invoice (line items, payments, taxes, etc.)
+- Pull the full details of a single invoice or estimate (line items, payments, taxes, etc.)
 - List your chart of accounts
+- List and look up recurring invoices (read only: Wave can't delete one, so this doesn't create them)
+- List your sales taxes (HST, GST and so on), with the tax ids invoices and estimates need
+- Run reports: profit and loss, balance sheet, cash flow, trial balance, sales tax, income by customer, purchases by vendor, account balances, and aged receivables and payables, on an accrual or cash basis
+- Export any of those reports as a CSV or PDF file, the same files Wave's own Export menu produces
 - Answers are trimmed to what matters (names, dates, amounts, statuses and the ids other tools need); ask for the "raw" invoice if you ever need Wave's full record
 
 **Create + edit things**
-- Add a new customer
+- Add, look up, or edit a customer (edits keep the stored address, shipping details and contacts unless you change them)
+- Create a customer statement (outstanding invoices, or account activity over a date range) as a shareable link, and email it
 - Add, edit, archive, or delete a product/service
 - Draft, edit (one field at a time if you like), approve, send, mark-as-sent, or delete an invoice; new invoices follow your workspace's currency, payment terms, column headings, footer and memo unless you say otherwise
+- Duplicate an invoice, send a payment reminder or a payment receipt, and fetch an invoice's PDF as a file Claude can read or hand back to you
 - Record or remove a payment against an invoice
-- Draft, edit, or delete an estimate
+- Record, look up, edit or delete bank and cash transactions (money in or out, categorised to an income or expense account), and create tags to label them
+- Draft, edit, approve, send, mark as sent or accepted, duplicate, or delete an estimate, turn one into an invoice, and fetch its PDF as a file
 
 Everything happens in your real Wave account. Claude doesn't have its own sandbox. Be deliberate with mutating operations, especially deletes and "send invoice".
 
@@ -199,6 +206,7 @@ Nothing in this project reads a `.env` file. Set these in your shell, or in the 
 | `WAVE_MCP_CONFIG_DIR` | Where `credentials.json` and the sign-in browser profile live. Default `~/.config/waveapps-mcp`. |
 | `WAVE_MCP_BROWSER_PATH` | A Chromium-based browser to use for sign-in instead of Playwright's. |
 | `WAVE_MCP_LOG_LEVEL` | `debug`, `info` (default), `warn` or `error`. Logs go to stderr. |
+| `WAVE_LIVE_SIGNED_IN` / `WAVE_LIVE_WRITES` / `WAVE_LIVE_TEST_CUSTOMER_ID` | Development only, for the live contract tests: `1` turns on the signed-in read checks or the real write checks (`npm run test:live:signed-in` and `npm run test:live:writes` set them for you), and the customer id names the throwaway test customer the write checks may create, change, email and delete records for. |
 | `WAVE_MCP_TRANSPORT` | `stdio` (default) or `http`. |
 | `WAVE_MCP_BIND` / `WAVE_MCP_PORT` | Where the HTTP transport listens. Default `127.0.0.1:8765`. |
 | `WAVE_MCP_HTTP_TOKEN` | Bearer token HTTP clients must send. Required when `WAVE_MCP_BIND` is not a loopback address, because anyone who can reach the port can otherwise act in your Wave account. |
@@ -315,6 +323,7 @@ Brief pointers if you want to hack on this:
 - Tool results go through the shapers in `src/tools/_shape.ts`, pure functions that keep the fields the model needs, cut nested accounts and sales taxes down to a few fields, and drop Wave's resource URLs and layout flags. Add a field there, with a test, rather than returning a raw payload.
 - Check the tools still match Wave's undocumented API: `npm run test:live`. No session needed: every tool runs with a bogus token, so Wave rejects it at auth, but only after confirming the REST route exists and the GraphQL query, input fields and enum values still fit its schema.
 - Add read-only checks against your own account with `npm run test:live:signed-in` (or set `WAVE_LIVE_SIGNED_IN=1`). Uses your stored session and never signs in for you; if it has expired, the run stops with one "sign in again" error.
+- Exercise the write tools for real with `npm run test:live:writes` and `WAVE_LIVE_TEST_CUSTOMER_ID` set to a throwaway customer whose name contains "test". It creates, changes and deletes estimates and invoices on that customer only, emails only that customer's own address, and deletes everything it made, though deleted invoices and estimates still use up their numbers.
 - Smoke-test against a live Wave account: `WAVE_AUTH_TOKEN=... npm run smoke`
 - Sign-in lives in `src/auth/`: `playwright.ts` launches Chromium in a form Cloudflare accepts (full browser, not the headless shell, without `HeadlessChrome` in the user agent), `auth0-sign-in.ts` walks Wave's Auth0 pages, `secrets.ts` wraps the OS credential store. Tests swap in an in-memory store (`src/test-setup.ts`), so they never touch your real Keychain.
 

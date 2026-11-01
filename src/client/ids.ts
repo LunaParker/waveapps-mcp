@@ -24,7 +24,7 @@ export function fromGlobalId(globalId: string): { typename: string; uuid: string
  */
 export function toCompositeGlobalId(
   businessUuid: string,
-  typename: 'Customer' | 'Product' | 'Vendor' | 'Estimate' | 'Bill' | 'Item' | 'Account' | 'Invoice' | 'SalesTax',
+  typename: 'Customer' | 'Product' | 'Vendor' | 'Estimate' | 'Bill' | 'Item' | 'Account' | 'Invoice' | 'InvoicePayment' | 'SalesTax',
   internalId: number | string,
 ): string {
   return Buffer.from(`Business:${businessUuid};${typename}:${internalId}`, 'utf8').toString('base64');

@@ -1,3 +1,5 @@
+import { CUSTOMER_FRAGMENTS, TRANSACTION_FIELDS } from './_queries.js';
+
 // GraphQL mutations captured verbatim from next.waveapps.com on 2026-05-11.
 // Wave's server may allow-list query texts; do NOT minify or rewrite.
 
@@ -197,5 +199,240 @@ export const INVOICE_SEND_MUTATION = `mutation InvoiceSend($input: InvoiceSendIn
       __typename
     }
     __typename
+  }
+}`;
+
+// Everything above was captured verbatim and stays that way. The operations below are the
+// exception: written for this server (Wave runs any document that validates), re-checked by `npm run test:live`.
+
+const ESTIMATE_RESULT = `didSucceed
+    inputErrors {
+      message
+      path
+    }
+    estimate {
+      id
+      estimateNumber
+      status
+    }`;
+
+export const APPROVE_ESTIMATE_MUTATION = `mutation ApproveEstimate($input: EstimateApproveInput!) {
+  estimateApprove(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const MARK_ESTIMATE_SENT_MUTATION = `mutation MarkEstimateSent($input: EstimateMarkSentInput!) {
+  estimateMarkSent(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const ACCEPT_ESTIMATE_MUTATION = `mutation AcceptEstimate($input: EstimateMarkAcceptedInput!) {
+  estimateMarkAccepted(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const RESET_ESTIMATE_ACCEPTANCE_MUTATION = `mutation ResetEstimateAcceptance($input: EstimateResetAcceptanceInput!) {
+  estimateResetAcceptance(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const DUPLICATE_ESTIMATE_MUTATION = `mutation DuplicateEstimate($input: EstimateCloneInput!) {
+  estimateClone(input: $input) {
+    ${ESTIMATE_RESULT}
+  }
+}`;
+
+export const CONVERT_ESTIMATE_MUTATION = `mutation ConvertEstimate($input: ConvertEstimateToInvoiceInput!) {
+  convertEstimateToInvoice(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+    }
+    invoiceId
+  }
+}`;
+
+export const ESTIMATE_PDF_MUTATION = `mutation GenerateEstimatePdf($input: EstimateGeneratePdfInput!) {
+  estimateGeneratePdf(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+    }
+    pdfUrl
+  }
+}`;
+
+export const SEND_ESTIMATE_MUTATION = `mutation SendEstimate($input: EstimateSendInput!) {
+  estimateSend(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }
+  }
+}`;
+
+export const PATCH_CUSTOMER_MUTATION = `mutation PatchCustomer($input: CustomerPatchInput!) {
+  customerPatch(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+    }
+    customer {
+      ...CustomerFragment
+    }
+  }
+}
+
+${CUSTOMER_FRAGMENTS}`;
+
+const STATEMENT_ERRORS = `didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }`;
+
+export const CREATE_OUTSTANDING_STATEMENT_MUTATION = `mutation CreateOutstandingInvoicesStatement($input: OutstandingInvoicesStatementCreateInput!) {
+  outstandingInvoicesStatementCreate(input: $input) {
+    ${STATEMENT_ERRORS}
+    outstandingInvoicesStatement {
+      id
+      reportDate
+      shareLink
+    }
+  }
+}`;
+
+export const CREATE_ACTIVITY_STATEMENT_MUTATION = `mutation CreateAccountActivityStatement($input: AccountActivityStatementCreateInput!) {
+  accountActivityStatementCreate(input: $input) {
+    ${STATEMENT_ERRORS}
+    accountActivityStatement {
+      id
+      fromDate
+      toDate
+      shareLink
+    }
+  }
+}`;
+
+export const SEND_OUTSTANDING_STATEMENT_MUTATION = `mutation SendOutstandingInvoicesStatement($input: OutstandingInvoicesStatementSendInput!) {
+  outstandingInvoicesStatementSend(input: $input) {
+    ${STATEMENT_ERRORS}
+  }
+}`;
+
+export const SEND_ACTIVITY_STATEMENT_MUTATION = `mutation SendAccountActivityStatement($input: AccountActivityStatementSendInput!) {
+  accountActivityStatementSend(input: $input) {
+    ${STATEMENT_ERRORS}
+  }
+}`;
+
+export const DUPLICATE_INVOICE_MUTATION = `mutation DuplicateInvoice($input: InvoiceCloneInput!) {
+  invoiceClone(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+    }
+    invoice {
+      id
+      invoiceNumber
+      status
+    }
+  }
+}`;
+
+export const INVOICE_PDF_MUTATION = `mutation GenerateInvoicePdf($input: InvoiceGeneratePdfInput!) {
+  invoiceGeneratePdf(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }
+    pdfUrl
+  }
+}`;
+
+export const INVOICE_REMINDER_MUTATION = `mutation SendInvoiceReminder($input: InvoiceReminderCreateInput!) {
+  invoiceReminderCreate(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }
+    invoiceReminder {
+      id
+    }
+  }
+}`;
+
+export const PAYMENT_RECEIPT_MUTATION = `mutation SendPaymentReceipt($input: InvoicePaymentReceiptSendInput!) {
+  invoicePaymentReceiptSend(input: $input) {
+    didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }
+  }
+}`;
+
+const TX_ERRORS = `didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }`;
+
+export const CREATE_TRANSACTION_MUTATION = `mutation CreateTransaction($input: TransactionCreateInput!) {
+  transactionCreate(input: $input) {
+    ${TX_ERRORS}
+    transaction {
+      ${TRANSACTION_FIELDS}
+    }
+  }
+}`;
+
+export const PATCH_TRANSACTION_MUTATION = `mutation PatchTransaction($input: TransactionPatchInput!) {
+  transactionPatch(input: $input) {
+    ${TX_ERRORS}
+    transaction {
+      ${TRANSACTION_FIELDS}
+    }
+  }
+}`;
+
+export const DELETE_TRANSACTION_MUTATION = `mutation DeleteTransaction($input: TransactionDeleteInput!) {
+  transactionDelete(input: $input) {
+    didSucceed
+    deletedTransactionIds
+  }
+}`;
+
+export const CREATE_TAG_MUTATION = `mutation CreateTag($input: CreateAccountingTagInput!) {
+  createAccountingTag(input: $input) {
+    ${TX_ERRORS}
+    tag {
+      id
+      name
+      description
+      archived
+    }
+  }
+}`;
+
+export const DELETE_TAGS_MUTATION = `mutation DeleteTags($input: DeleteAccountingTagsInput!) {
+  deleteAccountingTags(input: $input) {
+    didSucceed
   }
 }`;
