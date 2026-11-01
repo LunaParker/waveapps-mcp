@@ -95,7 +95,7 @@ export function registerInvoiceActionTools(server: McpServer, client: WaveClient
       description:
         'Emails a payment reminder for an approved, unpaid invoice. This cannot be undone; confirm the recipients with the user first.',
       inputSchema: { businessId: z.uuid().optional(), invoiceId, ...emailFields },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async (args) => {
       await mutate('SendInvoiceReminder', INVOICE_REMINDER_MUTATION, 'invoiceReminderCreate', {
@@ -119,7 +119,7 @@ export function registerInvoiceActionTools(server: McpServer, client: WaveClient
         ...emailFields,
         attachPdf: z.boolean().default(false).describe('Attach the invoice PDF too.'),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async (args) => {
       const business = client.businessId(args.businessId);
