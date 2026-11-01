@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { WaveClient } from '../client/index.js';
 import { toCompositeGlobalId } from '../client/ids.js';
+import { requireDidSucceed } from '../client/errors.js';
+import { addDays, todayIso } from '../util/dates.js';
 import { ESTIMATES_QUERY } from './_queries.js';
 import {
   CREATE_ESTIMATE_MUTATION,
@@ -9,20 +11,8 @@ import {
   PATCH_ESTIMATE_MUTATION,
 } from './_mutations.js';
 import { flattenConnection, jsonResult } from './_helpers.js';
+import { shapeBusiness, shapeEstimate } from './_shape.js';
 
-// Values checked against Wave's live schema (npm run test:live re-checks every one).
-const EstimateStatusFilter = z.enum([
-  'ACTIVE',
-  'DRAFT',
-  'SENT',
-  'VIEWED',
-  'APPROVED',
-  'ACCEPTED',
-  'CONVERTED',
-  'EXPIRED',
-  'PAID',
-  'UNPAID',
-]);
 const EstimateSort = z.enum([
   'ESTIMATE_DATE_DESC',
   'ESTIMATE_DATE_ASC',
@@ -32,6 +22,10 @@ const EstimateSort = z.enum([
 const EstimateLifecycleStatus = z.enum(['DRAFT', 'SENT', 'VIEWED', 'APPROVED', 'ACCEPTED', 'CONVERTED', 'EXPIRED']);
 const EstimateDepositStatus = z.enum(['DISABLED', 'ENABLED_OPTIONAL', 'ENABLED_MANDATORY']);
 const EstimateDepositUnit = z.enum(['AMOUNT', 'PERCENTAGE']);
+// Values checked against Wave's live schema (npm run test:live re-checks every one); ALL means no filter.
+const EstimateListStatus = z.enum(['ALL', 'ACTIVE', 'DRAFT', 'SENT', 'VIEWED', 'APPROVED', 'ACCEPTED', 'CONVERTED', 'EXPIRED', 'PAID', 'UNPAID']);
+const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const DEFAULT_VALIDITY_DAYS = 30;
 
 const EstimateItemInput = z.object({
   productId: z
@@ -72,7 +66,7 @@ interface EstimatesResponse {
 
 interface MutationPayload {
   didSucceed: boolean;
-  inputErrors?: ReadonlyArray<{ message: string }> | null;
+  inputErrors?: ReadonlyArray<{ message: string; path?: ReadonlyArray<string | number> | null }> | null;
   estimate?: { id: string; estimateNumber: string } | null;
 }
 
@@ -94,24 +88,45 @@ function itemsForApi(
   }));
 }
 
+/** One more than the highest integer estimate number, or '1' when there are none. */
+async function nextEstimateNumber(client: WaveClient, businessGlobalId: string): Promise<string> {
+  const data = await client.gql.execute<EstimatesResponse>({
+    operationName: 'GetEstimates',
+    query: ESTIMATES_QUERY,
+    variables: { businessId: businessGlobalId, page: 1, pageSize: 50, sort: 'ESTIMATE_NUMBER_DESC', activeStatus: 'ACTIVE', draftStatus: 'DRAFT' },
+  });
+  const numbers = flattenConnection(data.business.allEstimates).map((n) => shapeEstimate(n).estimateNumber);
+  if (numbers.length === 0) return '1';
+  const integers = numbers.filter((n): n is string => n !== null && /^\d+$/.test(n)).map(Number);
+  if (integers.length === 0) {
+    throw new Error(`Existing estimate numbers are not plain integers (latest: ${numbers[0]}); pass estimateNumber explicitly.`);
+  }
+  return String(Math.max(...integers) + 1);
+}
+
+async function businessCurrency(client: WaveClient, businessUuid: string): Promise<string> {
+  return shapeBusiness(await client.rest.get<unknown>(`/businesses/${businessUuid}/`)).currency ?? 'USD';
+}
+
 export function registerEstimateTools(server: McpServer, client: WaveClient): void {
   server.registerTool(
     'wave_list_estimates',
     {
       title: 'List Wave estimates',
       description:
-        'Lists estimates for a Wave business. GraphQL returns three buckets at once (all / active / draft) — pick whichever fits.',
+        'Lists estimates with status, dates, totals and customer. Each estimate\'s `id` is the Relay id wave_update_estimate and wave_delete_estimate take as `estimateGlobalId`.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(200).default(25),
         sort: EstimateSort.default('ESTIMATE_DATE_DESC'),
-        customerId: z.string().optional(),
-        activeStatus: EstimateStatusFilter.default('ACTIVE'),
-        draftStatus: EstimateStatusFilter.default('DRAFT'),
-        allStatus: EstimateStatusFilter.optional(),
-        estimateDateStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-        estimateDateEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        customerId: z
+          .string()
+          .optional()
+          .describe('Relay `id` of a customer from wave_list_customers, to list one customer\'s estimates.'),
+        status: EstimateListStatus.default('ALL').describe('Filter by lifecycle status; ALL returns every estimate.'),
+        estimateDateStart: IsoDate.optional(),
+        estimateDateEnd: IsoDate.optional(),
         estimateNumber: z.string().optional(),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
@@ -126,27 +141,17 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
           pageSize: args.pageSize,
           sort: args.sort,
           customerId: args.customerId,
-          activeStatus: args.activeStatus,
-          draftStatus: args.draftStatus,
-          allStatus: args.allStatus,
+          activeStatus: 'ACTIVE',
+          draftStatus: 'DRAFT',
+          allStatus: args.status === 'ALL' ? undefined : args.status,
           estimateDateStart: args.estimateDateStart,
           estimateDateEnd: args.estimateDateEnd,
           estimateNumber: args.estimateNumber,
         },
       });
       return jsonResult({
-        active: {
-          items: flattenConnection(data.business.activeEstimates),
-          pageInfo: data.business.activeEstimates.pageInfo,
-        },
-        draft: {
-          items: flattenConnection(data.business.draftEstimates),
-          pageInfo: data.business.draftEstimates.pageInfo,
-        },
-        all: {
-          items: flattenConnection(data.business.allEstimates),
-          pageInfo: data.business.allEstimates.pageInfo,
-        },
+        estimates: flattenConnection(data.business.allEstimates).map(shapeEstimate),
+        pageInfo: data.business.allEstimates.pageInfo,
       });
     },
   );
@@ -156,20 +161,16 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
     {
       title: 'Create a Wave estimate',
       description:
-        'Creates a new estimate. Pass the customer\'s integer ID + at least one line item. The estimate saves as a DRAFT by default.',
+        'Creates an estimate as a DRAFT. Needs the customer\'s integer id (wave_list_customers `internalId`) and at least one line. The number defaults to the next integer after the highest existing one, the currency to the business currency and the validity to 30 days.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         customerId: z.number().int().positive().describe('Wave integer customer ID.'),
         items: z.array(EstimateItemInput).min(1),
-        estimateNumber: z.string().default('1'),
+        estimateNumber: z.string().optional().describe('Defaults to the next number after the highest existing estimate.'),
         poNumber: z.string().default(''),
-        estimateDate: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .describe('ISO 8601 date (YYYY-MM-DD). Defaults to today.')
-          .optional(),
-        dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Valid-until date.'),
-        currency: z.string().length(3).toUpperCase().default('CAD'),
+        estimateDate: IsoDate.optional().describe('YYYY-MM-DD. Defaults to today.'),
+        dueDate: IsoDate.optional().describe('Valid-until date. Defaults to 30 days after estimateDate.'),
+        currency: z.string().length(3).toUpperCase().optional().describe('ISO 4217 code. Defaults to the business currency.'),
         memo: z.string().default(''),
         footer: z.string().default(''),
         title: z.string().default('Estimate'),
@@ -183,16 +184,21 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
     },
     async (args) => {
       const businessUuid = client.businessId(args.businessId);
-      const today = new Date().toISOString().slice(0, 10);
+      const businessGlobalId = client.businessGlobalId(args.businessId);
+      const [estimateNumber, currency] = await Promise.all([
+        args.estimateNumber ?? nextEstimateNumber(client, businessGlobalId),
+        args.currency ?? businessCurrency(client, businessUuid),
+      ]);
+      const estimateDate = args.estimateDate ?? todayIso();
       const input = {
         exchangeRate: null,
-        currency: args.currency,
-        businessId: client.businessGlobalId(args.businessId),
+        currency,
+        businessId: businessGlobalId,
         customerId: toCompositeGlobalId(businessUuid, 'Customer', args.customerId),
-        estimateNumber: args.estimateNumber,
+        estimateNumber,
         poNumber: args.poNumber,
-        estimateDate: args.estimateDate ?? today,
-        dueDate: args.dueDate ?? today,
+        estimateDate,
+        dueDate: args.dueDate ?? addDays(estimateDate, DEFAULT_VALIDITY_DAYS),
         footer: args.footer,
         memo: args.memo,
         title: args.title,
@@ -215,7 +221,8 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
         query: CREATE_ESTIMATE_MUTATION,
         variables: { input },
       });
-      return jsonResult(data.estimateCreate);
+      const payload = requireDidSucceed('CreateEstimate', data.estimateCreate);
+      return jsonResult({ estimate: payload.estimate ?? null });
     },
   );
 
@@ -224,9 +231,9 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
     {
       title: 'Update a Wave estimate',
       description:
-        'Patches an existing estimate. Pass the estimate\'s Relay global ID (see `wave_list_estimates` → `edges.node.id`). All other fields replace the prior values, so pass the full intended state.',
+        'Replaces an estimate\'s content. Pass the estimate\'s Relay `id` from wave_list_estimates as `estimateGlobalId` and the full intended state: every field replaces the stored value.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         estimateGlobalId: z
           .string()
           .describe('Composite Relay ID of the estimate, base64 `Business:UUID;Estimate:int`.'),
@@ -306,7 +313,8 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
         query: PATCH_ESTIMATE_MUTATION,
         variables: { input },
       });
-      return jsonResult(data.estimatePatch);
+      requireDidSucceed('PatchEstimate', data.estimatePatch);
+      return jsonResult({ ok: true, estimateGlobalId: args.estimateGlobalId });
     },
   );
 
@@ -314,7 +322,8 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
     'wave_delete_estimate',
     {
       title: 'Delete a Wave estimate',
-      description: 'Deletes an estimate by its Relay global ID. Only drafts and unsent estimates can be safely removed.',
+      description:
+        'Deletes an estimate by its Relay `id` from wave_list_estimates. Only drafts and unsent estimates should be deleted; confirm with the user first.',
       inputSchema: {
         estimateGlobalId: z.string().describe('Composite Relay ID of the estimate.'),
       },
@@ -326,7 +335,8 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
         query: DELETE_ESTIMATE_MUTATION,
         variables: { input: { estimateId: estimateGlobalId } },
       });
-      return jsonResult(data.estimateDelete);
+      requireDidSucceed('DeleteEstimate', data.estimateDelete);
+      return jsonResult({ ok: true, estimateGlobalId });
     },
   );
 }

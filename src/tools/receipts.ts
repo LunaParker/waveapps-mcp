@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { WaveClient } from '../client/index.js';
 import { TRANSACTIONS_QUERY } from './_queries.js';
 import { flattenConnection, jsonResult } from './_helpers.js';
+import { shapeReceipt } from './_shape.js';
 
 const TransactionSort = z.enum(['DATE_CREATED_DESC', 'DATE_CREATED_ASC']);
 
@@ -20,9 +21,9 @@ export function registerReceiptTools(server: McpServer, client: WaveClient): voi
     {
       title: 'List Wave receipts',
       description:
-        'Lists receipt-capture transactions for a Wave business. GraphQL-backed; receipts are modelled as transactions with `originType: "RECEIPT_CAPTURE"`. Returns id, amount, currency, dateCreated, description, attachment thumbnail, and any missingFields the server has flagged.',
+        'Lists receipt-capture transactions: amount, currency, date, description, attachment thumbnail and any fields Wave still needs filled in.',
       inputSchema: {
-        businessId: z.string().uuid().optional(),
+        businessId: z.uuid().optional(),
         first: z
           .number()
           .int()
@@ -45,10 +46,7 @@ export function registerReceiptTools(server: McpServer, client: WaveClient): voi
           filters: { originType: 'RECEIPT_CAPTURE' },
         },
       });
-      return jsonResult({
-        receipts: flattenConnection(data.business.transactions),
-        roles: data.business.roles,
-      });
+      return jsonResult({ receipts: flattenConnection(data.business.transactions).map(shapeReceipt) });
     },
   );
 }
