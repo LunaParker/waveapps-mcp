@@ -135,24 +135,35 @@ describe('WaveGraphQLClient', () => {
       expect(fetchSpy).toHaveBeenCalledTimes(2);
     });
 
-    it('retries once when the session comes back UNAUTHENTICATED with a 200', async () => {
-      const refresher = vi.fn(async () => true);
-      const c = new WaveGraphQLClient(AUTH, refresher);
-      fetchSpy.mockResolvedValueOnce(mockResponse({
-        errors: [{ message: 'Invalid request, authentication expired.', extensions: { code: 'UNAUTHENTICATED' } }],
-      }));
-      fetchSpy.mockResolvedValueOnce(mockResponse({ data: { ok: true } }));
-      const out = await c.execute({ operationName: 'X', query: '{}', variables: {} });
-      expect(out).toEqual({ ok: true });
-      expect(refresher).toHaveBeenCalledTimes(1);
-    });
-
     it('throws WaveAuthError when refresh succeeds but the retry still 401s', async () => {
       const refresher = vi.fn(async () => true);
       const c = new WaveGraphQLClient(AUTH, refresher);
       fetchSpy.mockResolvedValueOnce(new Response('', { status: 401 }));
       fetchSpy.mockResolvedValueOnce(new Response('', { status: 401 }));
       await expect(c.execute({ operationName: 'X', query: '{}', variables: {} })).rejects.toBeInstanceOf(WaveAuthError);
+    });
+
+    it('treats an UNAUTHENTICATED error on HTTP 200 as an expired session and retries', async () => {
+      const refresher = vi.fn(async () => true);
+      const c = new WaveGraphQLClient(AUTH, refresher);
+      fetchSpy.mockResolvedValueOnce(
+        mockResponse({
+          data: { user: null },
+          errors: [{ message: 'Invalid request, authentication expired.', extensions: { code: 'UNAUTHENTICATED' } }],
+        }),
+      );
+      fetchSpy.mockResolvedValueOnce(mockResponse({ data: { user: { id: 'U' } } }));
+      await expect(c.execute({ operationName: 'Me', query: 'q', variables: {} })).resolves.toEqual({ user: { id: 'U' } });
+      expect(refresher).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws WaveAuthError when UNAUTHENTICATED persists after a refresh', async () => {
+      const refresher = vi.fn(async () => true);
+      const c = new WaveGraphQLClient(AUTH, refresher);
+      const expired = { errors: [{ message: 'expired', extensions: { code: 'UNAUTHENTICATED' } }] };
+      fetchSpy.mockResolvedValueOnce(mockResponse(expired));
+      fetchSpy.mockResolvedValueOnce(mockResponse(expired));
+      await expect(c.execute({ operationName: 'Me', query: 'q', variables: {} })).rejects.toBeInstanceOf(WaveAuthError);
     });
 
     it('throws WaveAuthError when no refresher is configured', async () => {

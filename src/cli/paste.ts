@@ -21,8 +21,8 @@ const HELP_HEADER = `[waveapps-mcp] Paste credentials from a logged-in Wave sess
 `;
 
 /**
- * Prompt the user for cookie values and persist them. Always-works fallback for environments
- * where Google's OAuth blocks the puppeteer flow.
+ * Prompt the user for cookie values and persist them. Fallback for machines where `login`
+ * can't open a browser window (SSH sessions, no display).
  */
 export async function runPaste(deps: RunPasteDeps = {}): Promise<number> {
   const log = (deps.console ?? console).log;

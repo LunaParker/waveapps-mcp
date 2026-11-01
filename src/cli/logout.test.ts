@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeCredentials } from '../auth/credentials.js';
+import { memorySecretStore } from '../auth/secrets.js';
 import { runLogout } from './logout.js';
 
 let tmp: string;
@@ -19,10 +20,20 @@ afterEach(() => {
 
 describe('runLogout', () => {
   it('removes the credentials file when present', () => {
-    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined, password: undefined, totpSecret: undefined });
+    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined });
     const log = vi.fn();
     expect(runLogout({ console: { log } })).toBe(0);
     expect(log).toHaveBeenCalledWith(expect.stringContaining('Removed'));
+  });
+
+  it('also removes the password and TOTP secret from the credential store', () => {
+    writeCredentials({ authToken: 'X', csrfToken: undefined, businessId: undefined, email: undefined });
+    const store = memorySecretStore({ password: 'pw', 'totp-secret': 'JBSWY3DPEHPK3PXP' });
+    const log = vi.fn();
+    expect(runLogout({ console: { log }, store })).toBe(0);
+    expect(store.get('password')).toBeNull();
+    expect(store.get('totp-secret')).toBeNull();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('password and totp-secret'));
   });
 
   it('is a no-op when no file exists', () => {

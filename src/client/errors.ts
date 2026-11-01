@@ -1,3 +1,5 @@
+import { cliCommand } from '../util/cli-command.js';
+
 export class WaveError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options as ErrorOptions);
@@ -6,7 +8,7 @@ export class WaveError extends Error {
 }
 
 export class WaveAuthError extends WaveError {
-  constructor(message = 'Wave auth rejected — token likely expired. Re-grab the `waveapps` cookie from a logged-in browser.') {
+  constructor(message = `Wave auth rejected — session likely expired. Run \`${cliCommand('login')}\` to sign in again.`) {
     super(message);
     this.name = 'WaveAuthError';
   }

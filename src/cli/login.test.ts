@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,17 +7,16 @@ import {
   LOGIN_EXIT_NO_BROWSER,
   LOGIN_EXIT_OK,
   LOGIN_EXIT_TIMEOUT,
-  STEALTH_ARGS,
-  STEALTH_IGNORE_DEFAULT_ARGS,
-  applyStealthInit,
   runLogin,
   waitForAuth,
   type BrowserLike,
   type CookieLike,
-  type LaunchOptions,
   type PageLike,
 } from './login.js';
+import { WAVE_AUTH0_ENTRY_URL } from '../auth/browser.js';
 import { readCredentials } from '../auth/credentials.js';
+import { STEALTH_ARGS, STEALTH_IGNORE_DEFAULT_ARGS } from '../auth/playwright.js';
+import { profileLockPath } from '../auth/profile-lock.js';
 
 const BUSINESS_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
 
@@ -103,14 +102,13 @@ describe('runLogin', () => {
     const code = await runLogin({
       resolveTarget: () => null,
       launch: vi.fn(),
-      ensureDir: vi.fn(),
       console: silent,
       delay: () => Promise.resolve(),
     });
     expect(code).toBe(LOGIN_EXIT_NO_BROWSER);
   });
 
-  it('passes executablePath to puppeteer-core when the env override is used', async () => {
+  it("sends the browser to Wave's Auth0 sign-in and saves the captured cookies", async () => {
     const sp = scriptedPage();
     sp.page.cookies = async () => {
       sp.setUrl(`https://next.waveapps.com/${BUSINESS_UUID}/dashboard/`);
@@ -122,9 +120,8 @@ describe('runLogin', () => {
     const browser = browserFor(sp.page);
     const launch = vi.fn(async () => browser as unknown as BrowserLike);
     const code = await runLogin({
-      resolveTarget: () => ({ kind: 'executablePath', path: '/path/to/brave' }),
+      resolveTarget: () => ({ kind: 'bundled' }),
       launch,
-      ensureDir: vi.fn(),
       console: silent,
       delay: () => Promise.resolve(),
       pollIntervalMs: 0,
@@ -132,43 +129,48 @@ describe('runLogin', () => {
       timeoutMs: 5_000,
     });
     expect(code).toBe(LOGIN_EXIT_OK);
-    const opts = launch.mock.calls[0]![0] as LaunchOptions;
-    expect(opts.executablePath).toBe('/path/to/brave');
-    expect(opts.channel).toBeUndefined();
-    expect(opts.headless).toBe(false);
-    expect(opts.args).toContain('--no-first-run');
-    expect(opts.args).toContain('--disable-blink-features=AutomationControlled');
-    expect(opts.ignoreDefaultArgs).toContain('--enable-automation');
-    expect(opts.userDataDir).toContain('browser-profile');
+    expect(launch).toHaveBeenCalledTimes(1);
+    expect(sp.gotoCalls).toEqual([WAVE_AUTH0_ENTRY_URL]);
 
     const stored = readCredentials();
     expect(stored?.authToken).toBe('FAKE_TOKEN_FOR_TEST');
+    expect(stored?.csrfToken).toBe('CSRFTOKEN');
     expect(stored?.businessId).toBe(BUSINESS_UUID);
     expect(browser.closed).toBe(true);
   });
 
-  it('passes channel:chrome to puppeteer-core when no env override is set', async () => {
+  it('names the WAVE_MCP_BROWSER_PATH browser it launches', async () => {
     const sp = scriptedPage();
     sp.page.cookies = async () => {
       sp.setUrl(`https://next.waveapps.com/${BUSINESS_UUID}/dashboard/`);
       return [{ name: 'waveapps', value: 'tok' }];
     };
-    const browser = browserFor(sp.page);
-    const launch = vi.fn(async () => browser as unknown as BrowserLike);
+    const logs: string[] = [];
     const code = await runLogin({
-      resolveTarget: () => ({ kind: 'channel', channel: 'chrome' }),
-      launch,
-      ensureDir: vi.fn(),
-      console: silent,
+      resolveTarget: () => ({ kind: 'executablePath', path: '/path/to/brave' }),
+      launch: async () => browserFor(sp.page),
+      console: { log: (m: string) => void logs.push(m), error: () => undefined },
       delay: () => Promise.resolve(),
       pollIntervalMs: 0,
       stabilityMs: 0,
       timeoutMs: 5_000,
     });
     expect(code).toBe(LOGIN_EXIT_OK);
-    const opts = launch.mock.calls[0]![0] as LaunchOptions;
-    expect(opts.channel).toBe('chrome');
-    expect(opts.executablePath).toBeUndefined();
+    expect(logs[0]).toContain('/path/to/brave');
+  });
+
+  it('returns FAILURE without launching when another sign-in holds the profile lock', async () => {
+    mkdirSync(profileLockPath());
+    const launch = vi.fn();
+    const code = await runLogin({
+      resolveTarget: () => ({ kind: 'bundled' }),
+      launch,
+      console: silent,
+      delay: () => Promise.resolve(),
+      lockWaitMs: 0,
+    });
+    expect(code).toBe(LOGIN_EXIT_FAILURE);
+    expect(launch).not.toHaveBeenCalled();
   });
 
   it('returns TIMEOUT when the cookies never settle', async () => {
@@ -176,9 +178,8 @@ describe('runLogin', () => {
     sp.page.cookies = async () => [{ name: 'waveapps', value: 'invalidated' }];
     const browser = browserFor(sp.page);
     const code = await runLogin({
-      resolveTarget: () => ({ kind: 'channel', channel: 'chrome' }),
+      resolveTarget: () => ({ kind: 'bundled' }),
       launch: async () => browser as unknown as BrowserLike,
-      ensureDir: vi.fn(),
       console: silent,
       delay: () => Promise.resolve(),
       pollIntervalMs: 0,
@@ -192,11 +193,10 @@ describe('runLogin', () => {
 
   it('returns FAILURE when launch throws', async () => {
     const code = await runLogin({
-      resolveTarget: () => ({ kind: 'channel', channel: 'chrome' }),
+      resolveTarget: () => ({ kind: 'bundled' }),
       launch: async () => {
         throw new Error('cannot exec');
       },
-      ensureDir: vi.fn(),
       console: silent,
       delay: () => Promise.resolve(),
     });
@@ -218,9 +218,8 @@ describe('runLogin', () => {
       close: async () => undefined,
     };
     const code = await runLogin({
-      resolveTarget: () => ({ kind: 'channel', channel: 'chrome' }),
+      resolveTarget: () => ({ kind: 'bundled' }),
       launch: async () => browser,
-      ensureDir: vi.fn(),
       console: silent,
       delay: () => Promise.resolve(),
       pollIntervalMs: 0,
@@ -247,9 +246,8 @@ describe('runLogin', () => {
       },
     };
     const code = await runLogin({
-      resolveTarget: () => ({ kind: 'channel', channel: 'chrome' }),
+      resolveTarget: () => ({ kind: 'bundled' }),
       launch: async () => browser,
-      ensureDir: vi.fn(),
       console: silent,
       delay: () => Promise.resolve(),
       pollIntervalMs: 0,
@@ -261,74 +259,12 @@ describe('runLogin', () => {
 });
 
 describe('STEALTH constants', () => {
-  it('strips --enable-automation so Google OAuth does not flag us', () => {
+  it('strips --enable-automation so Cloudflare does not flag us', () => {
     expect(STEALTH_IGNORE_DEFAULT_ARGS).toContain('--enable-automation');
   });
 
   it('disables the AutomationControlled blink feature', () => {
     expect(STEALTH_ARGS).toContain('--disable-blink-features=AutomationControlled');
-  });
-});
-
-describe('applyStealthInit', () => {
-  it('installs the webdriver-mask via evaluateOnNewDocument when the method exists', async () => {
-    const calls: Array<Function> = [];
-    const page: PageLike = {
-      goto: async () => undefined,
-      cookies: async () => [],
-      url: () => '',
-      evaluateOnNewDocument: async (fn) => {
-        calls.push(fn);
-        // Verify the script body looks right.
-        const text = String(fn);
-        expect(text).toContain('webdriver');
-        return undefined;
-      },
-    };
-    await applyStealthInit(page);
-    expect(calls).toHaveLength(1);
-  });
-
-  it('is a no-op when evaluateOnNewDocument is not available', async () => {
-    const page: PageLike = {
-      goto: async () => undefined,
-      cookies: async () => [],
-      url: () => '',
-    };
-    await expect(applyStealthInit(page)).resolves.toBeUndefined();
-  });
-
-  it('swallows errors from evaluateOnNewDocument so a failed mask does not abort login', async () => {
-    const page: PageLike = {
-      goto: async () => undefined,
-      cookies: async () => [],
-      url: () => '',
-      evaluateOnNewDocument: async () => {
-        throw new Error('CDP busy');
-      },
-    };
-    await expect(applyStealthInit(page)).resolves.toBeUndefined();
-  });
-
-  it('actually masks navigator.webdriver when its script runs in a browser-like context', async () => {
-    // Sanity-check the script body: emulate how puppeteer evaluates it.
-    let capturedFn: Function | null = null;
-    const page: PageLike = {
-      goto: async () => undefined,
-      cookies: async () => [],
-      url: () => '',
-      evaluateOnNewDocument: async (fn) => {
-        capturedFn = fn;
-      },
-    };
-    await applyStealthInit(page);
-    // Build a fake browser context to run the function in.
-    const ctx = { Navigator: { prototype: { webdriver: true } as { webdriver?: boolean } } };
-    // The injected script uses `Object.defineProperty(Navigator.prototype, ...)` so we can call
-    // it with our fake Navigator in scope.
-    const exec = new Function('Navigator', `return (${String(capturedFn)})();`);
-    exec(ctx.Navigator);
-    expect(ctx.Navigator.prototype.webdriver).toBeUndefined();
   });
 });
 

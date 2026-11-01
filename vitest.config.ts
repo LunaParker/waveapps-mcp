@@ -5,6 +5,7 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     // Live contract tests call Wave's real API; they run via vitest.live.config.ts only.
     exclude: [...configDefaults.exclude, 'src/**/*.live.test.ts'],
+    setupFiles: ['src/test-setup.ts'],
     environment: 'node',
     globals: false,
     restoreMocks: true,
@@ -16,6 +17,7 @@ export default defineConfig({
       exclude: [
         'src/**/*.test.ts',
         'src/**/_test_utils.ts',
+        'src/test-setup.ts',
         'src/server.ts',
         'src/transports/**',
       ],

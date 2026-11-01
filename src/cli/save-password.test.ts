@@ -1,13 +1,15 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readCredentials, writeCredentials } from '../auth/credentials.js';
+import { memorySecretStore, secretStore } from '../auth/secrets.js';
 import {
   SAVE_PW_EXIT_BAD_TOTP,
   SAVE_PW_EXIT_DECLINED,
   SAVE_PW_EXIT_NO_INPUT,
   SAVE_PW_EXIT_OK,
+  SAVE_PW_EXIT_STORE_FAILED,
   runSavePassword,
 } from './save-password.js';
 import type { PromptIo } from './prompter.js';
@@ -51,8 +53,6 @@ function seed(): void {
     csrfToken: 'EXISTING_CSRF',
     businessId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
     email: undefined,
-    password: undefined,
-    totpSecret: undefined,
   });
 }
 
@@ -70,7 +70,7 @@ describe('runSavePassword', () => {
       expect(banner).toMatch(/WARNING — THIS IS INSECURE/);
       expect(banner).toContain('╔');
       expect(banner).toContain('╚');
-      expect(banner).toMatch(/plaintext/i);
+      expect(banner).toMatch(/Keychain/);
       expect(banner).toMatch(/2FA/);
     });
 
@@ -104,7 +104,7 @@ describe('runSavePassword', () => {
       const io = scriptedIo(['n'], []);
       const code = await runSavePassword({ io, console: silent });
       expect(code).toBe(SAVE_PW_EXIT_DECLINED);
-      expect(readCredentials()?.password).toBeUndefined();
+      expect(secretStore().get('password')).toBeNull();
     });
 
     it.each(['', 'no', 'nope', 'maybe', '?'])('treats "%s" as a decline', async (reply) => {
@@ -139,8 +139,8 @@ describe('runSavePassword', () => {
       expect(code).toBe(SAVE_PW_EXIT_OK);
       const out = readCredentials();
       expect(out?.email).toBe('me@example.com');
-      expect(out?.password).toBe('pw');
-      expect(out?.totpSecret).toBeUndefined();
+      expect(secretStore().get('password')).toBe('pw');
+      expect(secretStore().get('totp-secret')).toBeNull();
       expect(out?.authToken).toBe('EXISTING_TOKEN'); // existing fields preserved
     });
 
@@ -156,7 +156,7 @@ describe('runSavePassword', () => {
     it('falls back to the existing email when the user just hits Enter', async () => {
       writeCredentials({
         authToken: 'T', csrfToken: undefined, businessId: undefined,
-        email: 'old@example.com', password: undefined, totpSecret: undefined,
+        email: 'old@example.com',
       });
       const io = scriptedIo(['y', '', 'n'], ['pw']);
       const code = await runSavePassword({ io, console: silent });
@@ -171,12 +171,12 @@ describe('runSavePassword', () => {
       expect(code).toBe(SAVE_PW_EXIT_NO_INPUT);
     });
 
-    it('refuses if no credentials.json exists yet (need paste first)', async () => {
+    it('refuses if no credentials.json exists yet (need login first)', async () => {
       const err = vi.fn();
       const io = scriptedIo(['y', 'me@example.com'], ['pw']);
       const code = await runSavePassword({ io, console: { log: () => undefined, error: err } });
       expect(code).toBe(SAVE_PW_EXIT_NO_INPUT);
-      expect(err.mock.calls.flat().join('\n')).toMatch(/paste/);
+      expect(err.mock.calls.flat().join('\n')).toMatch(/login/);
     });
   });
 
@@ -193,7 +193,7 @@ describe('runSavePassword', () => {
       const io = scriptedIo(['y', 'me@example.com', 'y'], ['pw', 'JBSWY3DPEHPK3PXP']);
       const code = await runSavePassword({ io, console: silent });
       expect(code).toBe(SAVE_PW_EXIT_OK);
-      expect(readCredentials()?.totpSecret).toBe('JBSWY3DPEHPK3PXP');
+      expect(secretStore().get('totp-secret')).toBe('JBSWY3DPEHPK3PXP');
       // Both password and TOTP secret went through askSecret.
       expect(io.secretLog).toHaveLength(2);
       expect(io.secretLog[1]).toMatch(/TOTP/);
@@ -204,7 +204,8 @@ describe('runSavePassword', () => {
       const io = scriptedIo(['y', 'me@example.com', 'yes'], ['pw', '!!!not-base32!!!']);
       const code = await runSavePassword({ io, console: silent });
       expect(code).toBe(SAVE_PW_EXIT_BAD_TOTP);
-      expect(readCredentials()?.totpSecret).toBeUndefined();
+      expect(secretStore().get('totp-secret')).toBeNull();
+      expect(secretStore().get('password')).toBeNull();
     });
 
     it('skips silently if the user opts in but pastes nothing', async () => {
@@ -213,8 +214,44 @@ describe('runSavePassword', () => {
       const io = scriptedIo(['y', 'me@example.com', 'y'], ['pw', '']);
       const code = await runSavePassword({ io, console: { log, error: () => undefined } });
       expect(code).toBe(SAVE_PW_EXIT_OK);
-      expect(readCredentials()?.totpSecret).toBeUndefined();
-      expect(log.mock.calls.flat().join('\n')).toMatch(/skipping/);
+      expect(secretStore().get('totp-secret')).toBeNull();
+      expect(log.mock.calls.flat().join('\n')).toMatch(/keeping any stored one/);
+    });
+
+    it('keeps an existing TOTP secret when the user opts in but pastes nothing', async () => {
+      seed();
+      secretStore().set('totp-secret', 'JBSWY3DPEHPK3PXP');
+      const io = scriptedIo(['y', 'me@example.com', 'y'], ['pw', '']);
+      expect(await runSavePassword({ io, console: silent })).toBe(SAVE_PW_EXIT_OK);
+      expect(secretStore().get('totp-secret')).toBe('JBSWY3DPEHPK3PXP');
+    });
+
+    it('removes a stored TOTP secret when the user says 2FA is off', async () => {
+      seed();
+      secretStore().set('totp-secret', 'JBSWY3DPEHPK3PXP');
+      const io = scriptedIo(['y', 'me@example.com', 'n'], ['pw']);
+      expect(await runSavePassword({ io, console: silent })).toBe(SAVE_PW_EXIT_OK);
+      expect(secretStore().get('totp-secret')).toBeNull();
+    });
+  });
+
+  describe('credential store', () => {
+    it('never writes the password or TOTP secret into credentials.json', async () => {
+      seed();
+      const io = scriptedIo(['y', 'me@example.com', 'y'], ['hunter2', 'JBSWY3DPEHPK3PXP']);
+      await runSavePassword({ io, console: silent });
+      const raw = readFileSync(join(tmp, 'credentials.json'), 'utf8');
+      expect(raw).not.toContain('hunter2');
+      expect(raw).not.toContain('JBSWY3DPEHPK3PXP');
+    });
+
+    it('reports STORE_FAILED and leaves credentials.json alone when the store rejects the write', async () => {
+      seed();
+      const before = readFileSync(join(tmp, 'credentials.json'), 'utf8');
+      const store = { ...memorySecretStore(), set: (): void => { throw new Error('keychain locked'); } };
+      const io = scriptedIo(['y', 'me@example.com', 'n'], ['pw']);
+      expect(await runSavePassword({ io, console: silent, store })).toBe(SAVE_PW_EXIT_STORE_FAILED);
+      expect(readFileSync(join(tmp, 'credentials.json'), 'utf8')).toBe(before);
     });
   });
 });

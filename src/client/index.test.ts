@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WaveClient } from './index.js';
+import { memorySecretStore } from '../auth/secrets.js';
 
 const TOKEN_KEYS = ['WAVE_AUTH_TOKEN', 'WAVE_CSRF_TOKEN', 'WAVE_BUSINESS_ID', 'WAVE_MCP_CONFIG_DIR'];
 const BUSINESS_UUID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
@@ -127,7 +128,7 @@ describe('WaveClient', () => {
       }
     });
 
-    it('does not wire a refresher when no email/password is on file', () => {
+    it('fails with WaveAuthError when no email/password is on file and nothing new was saved', () => {
       // fromEnv: no env, no credentials file beyond the seed token → no refresher
       writeFileSync(
         join(tmp, 'credentials.json'),
@@ -145,17 +146,78 @@ describe('WaveClient', () => {
       }
     });
 
-    it('wires a refresher when email + password are on file', () => {
+    it('moves a legacy plaintext password into the store and wires a refresher', () => {
       writeFileSync(
         join(tmp, 'credentials.json'),
         JSON.stringify({ authToken: 'X', email: 'me@example.com', password: 'pw' }),
         'utf8',
       );
-      // We can't easily check the refresher fires without triggering puppeteer, but we
-      // CAN verify the client constructs and exposes the rest/gql sub-clients.
-      const c = WaveClient.fromEnv();
+      const store = memorySecretStore();
+      const c = WaveClient.fromEnv(store);
+      expect(store.get('password')).toBe('pw');
+      expect(JSON.parse(readFileSync(join(tmp, 'credentials.json'), 'utf8'))).not.toHaveProperty('password');
       expect(c.rest).toBeDefined();
-      expect(c.gql).toBeDefined();
+    });
+
+    it('reuses a token another process already wrote instead of signing in again', async () => {
+      writeFileSync(join(tmp, 'credentials.json'), JSON.stringify({ authToken: 'OLD', email: 'me@example.com' }), 'utf8');
+      const store = memorySecretStore({ password: 'pw' });
+      const fetchSpy = vi.fn();
+      vi.stubGlobal('fetch', fetchSpy);
+      try {
+        const c = WaveClient.fromEnv(store);
+        // Another server signs in and rewrites the file before this one's call fails.
+        writeFileSync(join(tmp, 'credentials.json'), JSON.stringify({ authToken: 'FRESH', email: 'me@example.com' }), 'utf8');
+        fetchSpy.mockResolvedValueOnce(new Response('', { status: 401 }));
+        fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ ok: 1 }), { status: 200 }));
+        await expect(c.rest.get('/x')).resolves.toEqual({ ok: 1 });
+        const retryHeaders = fetchSpy.mock.calls[1]![1].headers as Record<string, string>;
+        expect(retryHeaders['Authorization']).toBe('Bearer FRESH');
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('picks up a session saved by `login` after startup, with no password stored', async () => {
+      writeFileSync(join(tmp, 'credentials.json'), JSON.stringify({ authToken: 'STALE' }), 'utf8');
+      const fetchSpy = vi.fn();
+      vi.stubGlobal('fetch', fetchSpy);
+      try {
+        const c = WaveClient.fromEnv(memorySecretStore());
+        writeFileSync(join(tmp, 'credentials.json'), JSON.stringify({ authToken: 'FROM_LOGIN', csrfToken: 'C' }), 'utf8');
+        fetchSpy.mockResolvedValueOnce(new Response('', { status: 401 }));
+        fetchSpy.mockResolvedValueOnce(new Response(JSON.stringify({ ok: 1 }), { status: 200 }));
+        await expect(c.rest.get('/x')).resolves.toEqual({ ok: 1 });
+        expect((fetchSpy.mock.calls[1]![1].headers as Record<string, string>)['Authorization']).toBe('Bearer FROM_LOGIN');
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('does not reuse an on-disk token it already saw at startup', async () => {
+      process.env['WAVE_AUTH_TOKEN'] = 'FROM_ENV';
+      writeFileSync(join(tmp, 'credentials.json'), JSON.stringify({ authToken: 'OLD_FILE' }), 'utf8');
+      const fetchSpy = vi.fn().mockResolvedValueOnce(new Response('', { status: 401 }));
+      vi.stubGlobal('fetch', fetchSpy);
+      try {
+        const c = WaveClient.fromEnv(memorySecretStore());
+        await expect(c.rest.get('/x')).rejects.toThrowError(/login/);
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('fails with WaveAuthError when the email is on file but no password is in the store', () => {
+      writeFileSync(join(tmp, 'credentials.json'), JSON.stringify({ authToken: 'X', email: 'me@example.com' }), 'utf8');
+      const fetchSpy = vi.fn().mockResolvedValueOnce(new Response('', { status: 401 }));
+      vi.stubGlobal('fetch', fetchSpy);
+      try {
+        const c = WaveClient.fromEnv(memorySecretStore());
+        return expect(c.rest.get('/x')).rejects.toThrowError(/expired/);
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
 
     it('returns false from refreshOnce when no refresher is configured', async () => {
@@ -171,13 +233,13 @@ describe('WaveClient', () => {
 
     it('logs and surfaces failures from the user-supplied refresher gracefully', async () => {
       const refresher = vi.fn(async () => {
-        throw new Error('puppeteer crashed');
+        throw new Error('browser crashed');
       });
       const c = new WaveClient({ authToken: 'X', csrfToken: undefined }, { refresher });
       const fetchSpy = vi.fn().mockResolvedValueOnce(new Response('', { status: 401 }));
       vi.stubGlobal('fetch', fetchSpy);
       try {
-        await expect(c.rest.get('/x')).rejects.toThrowError(/expired/);
+        await expect(c.rest.get('/x')).rejects.toThrowError(/automatic sign-in failed: browser crashed/);
         expect(refresher).toHaveBeenCalledTimes(1);
       } finally {
         vi.unstubAllGlobals();
