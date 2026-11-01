@@ -123,6 +123,48 @@ describe.skipIf(!writes)('Wave write flows on the test customer (npm run test:li
     expect((await call('wave_get_estimate', { estimateGlobalId: est.id })).estimate.status).toBe('CONVERTED');
   });
 
+  it('updates the customer without losing its address, shipping details or contacts, then restores it', async () => {
+    const { customer: before } = await call('wave_get_customer', { customerId: customer.id });
+    const restore = {
+      customerId: customer.id,
+      internalNotes: before.internalNotes ?? '',
+      address: {
+        addressLine1: before.address?.addressLine1 ?? '', addressLine2: before.address?.addressLine2 ?? '', city: before.address?.city ?? '',
+        provinceCode: before.address?.province ?? '', countryCode: before.address?.country ?? undefined, postalCode: before.address?.postalCode ?? '',
+      },
+      shippingDetails: before.shippingDetails,
+      additionalContacts: (before.additionalContacts as Array<{ name: string; email: string | null; phone: string | null }>).map((c) => ({
+        name: c.name, ...(c.email ? { email: c.email } : {}), ...(c.phone ? { phone: c.phone } : {}),
+      })),
+    };
+    onCleanup('customer restore', () => call('wave_update_customer', restore));
+
+    const { customer: noted } = await call('wave_update_customer', { customerId: customer.id, internalNotes: 'TEST - live contract check' });
+    expect(noted.internalNotes).toBe('TEST - live contract check');
+    expect(noted.address).toEqual(before.address);
+    expect(noted.shippingDetails).toEqual(before.shippingDetails);
+
+    const { customer: moved } = await call('wave_update_customer', { customerId: customer.id, address: { city: 'Testville' } });
+    expect(moved.address).toEqual({ ...before.address, city: 'Testville' });
+
+    const { customer: withContact } = await call('wave_update_customer', { customerId: customer.id, additionalContacts: [{ name: 'TEST - contact', email: customer.email }] });
+    expect(withContact.additionalContacts.map((c: { name: string }) => c.name)).toEqual(['TEST - contact']);
+  });
+
+  it("creates statements and emails one to the test customer's own address", async () => {
+    const outstanding = await call('wave_create_customer_statement', { customerId: customer.id, type: 'outstanding_invoices' });
+    expect(outstanding.shareLink).toMatch(/^https:\/\//);
+    const activity = await call('wave_create_customer_statement', { customerId: customer.id, type: 'account_activity' });
+    expect(activity.statementId).toEqual(expect.any(String));
+    await call('wave_send_customer_statement', {
+      statementId: activity.statementId,
+      type: 'account_activity',
+      to: [customer.email],
+      subject: 'TEST - statement send check',
+      message: 'Automated contract check; please ignore.',
+    });
+  });
+
   it("emails an estimate to the test customer's own address", async () => {
     const est = await createEstimate();
     await call('wave_approve_estimate', { estimateGlobalId: est.id });

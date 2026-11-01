@@ -14,6 +14,7 @@ describe('registerAllTools', () => {
       'wave_approve_invoice',
       'wave_convert_estimate_to_invoice',
       'wave_create_customer',
+      'wave_create_customer_statement',
       'wave_create_estimate',
       'wave_create_invoice',
       'wave_create_product',
@@ -24,6 +25,7 @@ describe('registerAllTools', () => {
       'wave_delete_product',
       'wave_duplicate_estimate',
       'wave_get_business',
+      'wave_get_customer',
       'wave_get_estimate',
       'wave_get_estimate_pdf',
       'wave_get_invoice',
@@ -43,12 +45,14 @@ describe('registerAllTools', () => {
       'wave_mark_invoice_sent',
       'wave_record_invoice_payment',
       'wave_reset_estimate_acceptance',
+      'wave_send_customer_statement',
       'wave_send_estimate',
       'wave_send_invoice',
+      'wave_update_customer',
       'wave_update_estimate',
       'wave_update_invoice',
       'wave_update_product',
     ]);
-    expect(names).toHaveLength(39);
+    expect(names).toHaveLength(43);
   });
 });

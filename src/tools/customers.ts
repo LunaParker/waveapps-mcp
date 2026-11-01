@@ -3,10 +3,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { WaveClient } from '../client/index.js';
 import { requireDidSucceed } from '../client/errors.js';
 import { toCompositeGlobalId } from '../client/ids.js';
-import { CUSTOMER_LIST_QUERY } from './_queries.js';
-import { CREATE_CUSTOMER_MUTATION, DELETE_CUSTOMER_MUTATION } from './_mutations.js';
+import { CUSTOMER_LIST_QUERY, GET_CUSTOMER_QUERY } from './_queries.js';
+import { CREATE_CUSTOMER_MUTATION, DELETE_CUSTOMER_MUTATION, PATCH_CUSTOMER_MUTATION } from './_mutations.js';
 import { flattenConnection, jsonResult } from './_helpers.js';
-import { shapeCustomer, type CustomerSummary } from './_shape.js';
+import { shapeCustomer, type CustomerAddress, type CustomerSummary } from './_shape.js';
 
 interface CustomerListResponse {
   business: {
@@ -27,6 +27,44 @@ interface MutationPayload {
 /** A search reads up to SEARCH_MAX_PAGES pages of SEARCH_PAGE_SIZE customers. */
 const SEARCH_PAGE_SIZE = 500;
 const SEARCH_MAX_PAGES = 10;
+
+/** Wave wants ISO 3166-2 province codes ("CA-ON") and answers "not a valid choice" to a bare "ON". */
+export function provinceCode(province: string | null | undefined, country: string | null | undefined): string {
+  if (!province) return '';
+  if (province.includes('-') || !country) return province.toUpperCase();
+  return `${country.toUpperCase()}-${province.toUpperCase()}`;
+}
+
+const AddressInput = z.object({
+  addressLine1: z.string().optional(),
+  addressLine2: z.string().optional(),
+  city: z.string().optional(),
+  provinceCode: z.string().optional().describe('"ON" or "CA-ON" for Ontario; a bare code needs countryCode.'),
+  countryCode: z.string().length(2).optional().describe('ISO 3166-1 alpha-2.'),
+  postalCode: z.string().optional(),
+});
+type AddressArgs = z.infer<typeof AddressInput>;
+
+/** An address input from explicit fields over the stored ones; Wave replaces the whole address on every write. */
+function addressInput(given: AddressArgs | undefined, stored: CustomerAddress | null): Record<string, unknown> {
+  const country = given?.countryCode ?? stored?.country ?? null;
+  return {
+    addressLine1: given?.addressLine1 ?? stored?.addressLine1 ?? '',
+    addressLine2: given?.addressLine2 ?? stored?.addressLine2 ?? '',
+    city: given?.city ?? stored?.city ?? '',
+    provinceCode: provinceCode(given?.provinceCode ?? stored?.province, country),
+    countryCode: country,
+    postalCode: given?.postalCode ?? stored?.postalCode ?? '',
+  };
+}
+
+const ADDRESS_KEYS = ['addressLine1', 'addressLine2', 'city', 'provinceCode', 'countryCode', 'postalCode'] as const;
+const SCALAR_KEYS = ['name', 'firstName', 'lastName', 'email', 'phone', 'mobile', 'fax', 'tollFree', 'website', 'displayId', 'internalNotes', 'currency'] as const;
+
+const customerRef = {
+  customerId: z.number().int().positive().optional().describe('Integer `internalId` from wave_list_customers.'),
+  customerGlobalId: z.string().optional().describe('Relay `id` from wave_list_customers, instead of customerId.'),
+};
 
 function matches(c: CustomerSummary, needle: string): boolean {
   return [c.name, c.firstName, c.lastName, c.email, c.displayId].some((v) => v !== null && v.toLowerCase().includes(needle));
@@ -113,7 +151,7 @@ export function registerCustomerTools(server: McpServer, client: WaveClient): vo
             addressLine1: z.string().optional(),
             addressLine2: z.string().optional(),
             city: z.string().optional(),
-            provinceCode: z.string().optional().describe('e.g. "ON" for Ontario.'),
+            provinceCode: z.string().optional().describe('"ON" or "CA-ON" for Ontario; a bare code needs countryCode.'),
             countryCode: z.string().length(2).optional().describe('ISO 3166-1 alpha-2.'),
             postalCode: z.string().optional(),
           })
@@ -140,7 +178,7 @@ export function registerCustomerTools(server: McpServer, client: WaveClient): vo
           addressLine1: args.address?.addressLine1 ?? '',
           addressLine2: args.address?.addressLine2 ?? '',
           city: args.address?.city ?? '',
-          provinceCode: args.address?.provinceCode ?? '',
+          provinceCode: provinceCode(args.address?.provinceCode, args.address?.countryCode),
           countryCode: args.address?.countryCode ?? null,
           postalCode: args.address?.postalCode ?? '',
         },
@@ -190,6 +228,105 @@ export function registerCustomerTools(server: McpServer, client: WaveClient): vo
       });
       requireDidSucceed('DeleteCustomer', data.customerDelete);
       return jsonResult({ ok: true });
+    },
+  );
+
+  const resolveCustomer = (businessId: string | undefined, customerId: number | undefined, customerGlobalId: string | undefined): string => {
+    if (customerGlobalId) return customerGlobalId;
+    if (customerId != null) return toCompositeGlobalId(client.businessId(businessId), 'Customer', customerId);
+    throw new Error('Provide either customerId or customerGlobalId.');
+  };
+  const readCustomer = async (businessId: string | undefined, id: string): Promise<CustomerSummary> => {
+    const data = await client.gql.execute<{ business: { customer: unknown } | null }>({
+      operationName: 'GetCustomer',
+      query: GET_CUSTOMER_QUERY,
+      variables: { businessId: client.businessGlobalId(businessId), customerId: id },
+    });
+    const customer = data.business?.customer;
+    if (!customer) throw new Error(`No customer with id ${id} in this business.`);
+    return shapeCustomer(customer);
+  };
+
+  server.registerTool(
+    'wave_get_customer',
+    {
+      title: 'Get one Wave customer',
+      description:
+        'Fetches one customer with contact details, billing and shipping addresses, additional contacts, and outstanding and overdue balances. Read it before wave_update_customer to see what is stored.',
+      inputSchema: { businessId: z.uuid().optional(), ...customerRef },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ businessId, customerId, customerGlobalId }) => {
+      const customer = await readCustomer(businessId, resolveCustomer(businessId, customerId, customerGlobalId));
+      return jsonResult({ customer });
+    },
+  );
+
+  server.registerTool(
+    'wave_update_customer',
+    {
+      title: 'Update a Wave customer',
+      description:
+        "Changes a customer's details. Only the fields you pass change. `address` fields merge into the stored address. `shippingDetails` replaces the stored shipping details (null removes them). `additionalContacts` replaces the whole contact list ([] removes them all). Wave clears the address and shipping details on any update that leaves them out, so the tool reads the customer first and sends them back.",
+      inputSchema: {
+        businessId: z.uuid().optional(),
+        ...customerRef,
+        name: z.string().min(1).optional(),
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        email: z.email().optional(),
+        phone: z.string().optional(),
+        mobile: z.string().optional(),
+        fax: z.string().optional(),
+        tollFree: z.string().optional(),
+        website: z.string().optional(),
+        displayId: z.string().optional(),
+        internalNotes: z.string().optional(),
+        currency: z.string().length(3).toUpperCase().optional(),
+        address: AddressInput.optional(),
+        shippingDetails: z
+          .object({ name: z.string().optional(), phone: z.string().optional(), instructions: z.string().optional(), address: AddressInput.optional() })
+          .nullable()
+          .optional(),
+        additionalContacts: z
+          .array(z.object({ name: z.string().min(1), email: z.email().optional(), phone: z.string().optional() }))
+          .optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    },
+    async (args) => {
+      const id = resolveCustomer(args.businessId, args.customerId, args.customerGlobalId);
+      const fullAddress = args.address !== undefined && ADDRESS_KEYS.every((k) => args.address?.[k] !== undefined);
+      // Skip the read only when nothing depends on stored values.
+      const stored = fullAddress && args.shippingDetails !== undefined && args.additionalContacts === undefined
+        ? null
+        : await readCustomer(args.businessId, id);
+      const input: Record<string, unknown> = { id };
+      for (const k of SCALAR_KEYS) if (args[k] !== undefined) input[k] = args[k];
+      input['address'] = addressInput(args.address, stored?.address ?? null);
+      if (args.shippingDetails === null) {
+        input['shippingDetails'] = null;
+      } else if (args.shippingDetails !== undefined) {
+        const given = args.shippingDetails;
+        input['shippingDetails'] = { name: given.name ?? '', phone: given.phone ?? '', instructions: given.instructions ?? '', address: addressInput(given.address, null) };
+      } else {
+        const kept = stored?.shippingDetails ?? null;
+        input['shippingDetails'] = kept && { name: kept.name ?? '', phone: kept.phone ?? '', instructions: kept.instructions ?? '', address: addressInput(undefined, kept.address) };
+      }
+      if (args.additionalContacts !== undefined) {
+        // Wave deletes a contact sent as `{ id }` alone and adds one sent without an id.
+        input['additionalContacts'] = [
+          ...(stored?.additionalContacts ?? []).filter((c) => c.id !== null).map((c) => ({ id: c.id })),
+          ...args.additionalContacts.map((c) => ({ name: c.name, email: c.email ?? '', phone: c.phone ?? '' })),
+        ];
+      }
+      const data = await client.gql.execute<{ customerPatch: MutationPayload }>({
+        operationName: 'PatchCustomer',
+        query: PATCH_CUSTOMER_MUTATION,
+        variables: { input },
+      });
+      const payload = requireDidSucceed('PatchCustomer', data.customerPatch);
+      return jsonResult({ customer: shapeCustomer(payload.customer) });
     },
   );
 }

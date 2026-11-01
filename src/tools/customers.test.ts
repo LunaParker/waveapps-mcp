@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { WaveMutationError } from '../client/errors.js';
-import { registerCustomerTools } from './customers.js';
-import { CUSTOMER_LIST_QUERY } from './_queries.js';
-import { CREATE_CUSTOMER_MUTATION, DELETE_CUSTOMER_MUTATION } from './_mutations.js';
+import { provinceCode, registerCustomerTools } from './customers.js';
+import { CUSTOMER_LIST_QUERY, GET_CUSTOMER_QUERY } from './_queries.js';
+import { CREATE_CUSTOMER_MUTATION, DELETE_CUSTOMER_MUTATION, PATCH_CUSTOMER_MUTATION } from './_mutations.js';
 import {
   BUSINESS_GLOBAL_ID,
+  BUSINESS_UUID,
   createMockClient,
   createStubServer,
 } from './_test_utils.js';
@@ -23,14 +24,16 @@ function listResponse(nodes: unknown[], pageInfo = { currentPage: 1, totalPages:
 }
 
 describe('registerCustomerTools', () => {
-  it('registers list, create, delete customer tools', () => {
+  it('registers list, get, create, update, delete customer tools', () => {
     const stub = createStubServer();
     const mock = createMockClient();
     registerCustomerTools(stub.server as never, mock.client);
     expect([...stub.handlers.keys()].sort()).toEqual([
       'wave_create_customer',
       'wave_delete_customer',
+      'wave_get_customer',
       'wave_list_customers',
+      'wave_update_customer',
     ]);
   });
 
@@ -138,7 +141,7 @@ describe('registerCustomerTools', () => {
     expect(input.address).toMatchObject({
       addressLine1: '1 Test Lane',
       countryCode: 'CA',
-      provinceCode: 'ON',
+      provinceCode: 'CA-ON',
     });
     expect(input.displayId).toBe('ACCT-123');
     expect(input.internalNotes).toBe('note');
@@ -182,5 +185,87 @@ describe('registerCustomerTools', () => {
     registerCustomerTools(stub.server as never, mock.client);
     expect(await stub.parsed('wave_delete_customer', { customerId: 1 })).toEqual({ ok: true });
     await expect(stub.invoke('wave_delete_customer', { customerId: 1 })).rejects.toThrow(WaveMutationError);
+  });
+});
+
+describe('provinceCode', () => {
+  it('turns a bare province into the ISO 3166-2 code Wave accepts', () => {
+    expect(provinceCode('on', 'ca')).toBe('CA-ON');
+    expect(provinceCode('CA-ON', 'CA')).toBe('CA-ON');
+    expect(provinceCode('ON', undefined)).toBe('ON');
+    expect(provinceCode(undefined, 'CA')).toBe('');
+  });
+});
+
+describe('wave_get_customer and wave_update_customer', () => {
+  const CUSTOMER_ID = Buffer.from(`Business:${BUSINESS_UUID};Customer:201`, 'utf8').toString('base64');
+  const STORED = {
+    ...RAW_CUSTOMER(CUSTOMER_ID, 'Stored Co', 'stored@example.com'),
+    address: { addressLine1: '1 Old St', addressLine2: 'Unit 2', city: 'Toronto', province: { code: 'CA-ON', name: 'Ontario' }, country: { code: 'CA', name: 'Canada' }, postalCode: 'M5V 1A1' },
+    shippingDetails: { name: 'Dock', instructions: 'Back door', phone: '555', address: { addressLine1: '9 Dock Rd', addressLine2: '', city: 'Guelph', province: { code: 'CA-ON' }, country: { code: 'CA' }, postalCode: 'N1H 1A1' } },
+    additionalContacts: [{ id: 'contact1', name: 'Old Contact', email: 'old@example.com', phone: '' }],
+  };
+  function setup() {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    registerCustomerTools(stub.server as never, mock.client);
+    return { stub, mock };
+  }
+
+  it('wave_get_customer reads one customer by integer id', async () => {
+    const { stub, mock } = setup();
+    mock.gql.execute.mockResolvedValueOnce({ business: { id: BUSINESS_GLOBAL_ID, customer: STORED } });
+    const out = (await stub.parsed('wave_get_customer', { customerId: 201 })) as { customer: Record<string, unknown> };
+    const call = mock.gql.execute.mock.calls[0]![0];
+    expect(call.query).toBe(GET_CUSTOMER_QUERY);
+    expect(call.variables).toEqual({ businessId: BUSINESS_GLOBAL_ID, customerId: CUSTOMER_ID });
+    expect(out.customer).toMatchObject({ name: 'Stored Co', address: { city: 'Toronto', province: 'CA-ON' } });
+  });
+
+  it('wave_update_customer sends back the stored address and shipping details, which Wave would otherwise clear', async () => {
+    const { stub, mock } = setup();
+    mock.gql.execute.mockResolvedValueOnce({ business: { id: BUSINESS_GLOBAL_ID, customer: STORED } });
+    mock.gql.execute.mockResolvedValueOnce({ customerPatch: { didSucceed: true, customer: STORED } });
+    await stub.invoke('wave_update_customer', { customerId: 201, internalNotes: 'new note', address: { city: 'Guelph' } });
+    const patch = mock.gql.execute.mock.calls[1]![0];
+    expect(patch.query).toBe(PATCH_CUSTOMER_MUTATION);
+    expect(patch.variables.input).toEqual({
+      id: CUSTOMER_ID,
+      internalNotes: 'new note',
+      address: { addressLine1: '1 Old St', addressLine2: 'Unit 2', city: 'Guelph', provinceCode: 'CA-ON', countryCode: 'CA', postalCode: 'M5V 1A1' },
+      shippingDetails: {
+        name: 'Dock', phone: '555', instructions: 'Back door',
+        address: { addressLine1: '9 Dock Rd', addressLine2: '', city: 'Guelph', provinceCode: 'CA-ON', countryCode: 'CA', postalCode: 'N1H 1A1' },
+      },
+    });
+  });
+
+  it('replaces additional contacts by deleting the stored ones and adding the new list', async () => {
+    const { stub, mock } = setup();
+    mock.gql.execute.mockResolvedValueOnce({ business: { id: BUSINESS_GLOBAL_ID, customer: STORED } });
+    mock.gql.execute.mockResolvedValueOnce({ customerPatch: { didSucceed: true, customer: STORED } });
+    await stub.invoke('wave_update_customer', { customerId: 201, additionalContacts: [{ name: 'New Contact', email: 'new@example.com' }], shippingDetails: null });
+    const input = mock.gql.execute.mock.calls[1]![0].variables.input;
+    expect(input.additionalContacts).toEqual([{ id: 'contact1' }, { name: 'New Contact', email: 'new@example.com', phone: '' }]);
+    expect(input.shippingDetails).toBeNull();
+  });
+
+  it('skips the read when the full address and shipping details are given', async () => {
+    const { stub, mock } = setup();
+    mock.gql.execute.mockResolvedValueOnce({ customerPatch: { didSucceed: true, customer: STORED } });
+    await stub.invoke('wave_update_customer', {
+      customerGlobalId: CUSTOMER_ID,
+      address: { addressLine1: 'a', addressLine2: '', city: 'c', provinceCode: 'ON', countryCode: 'CA', postalCode: 'p' },
+      shippingDetails: null,
+    });
+    expect(mock.gql.execute).toHaveBeenCalledTimes(1);
+    expect(mock.gql.execute.mock.calls[0]![0].variables.input.address.provinceCode).toBe('CA-ON');
+  });
+
+  it('surfaces a refused update as a WaveMutationError', async () => {
+    const { stub, mock } = setup();
+    mock.gql.execute.mockResolvedValueOnce({ business: { id: BUSINESS_GLOBAL_ID, customer: STORED } });
+    mock.gql.execute.mockResolvedValueOnce({ customerPatch: { didSucceed: false, inputErrors: [{ message: 'This is not a valid choice.', path: ['input', 'address', 'provinceCode'] }] } });
+    await expect(stub.invoke('wave_update_customer', { customerId: 201, name: 'X' })).rejects.toThrow(WaveMutationError);
   });
 });

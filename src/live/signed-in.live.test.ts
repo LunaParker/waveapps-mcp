@@ -217,6 +217,18 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
     await call('wave_list_customers', z.object({ customers: z.array(GqlCustomer), pageInfo: OffsetPageInfo }), { pageSize: 5 });
   });
 
+  it('wave_get_customer reads one customer from the list', async ({ skip }) => {
+    const list = await call('wave_list_customers', z.object({ customers: z.array(GqlCustomer) }), { pageSize: 1 });
+    const first = list.customers[0];
+    if (!first) return skip('no customers to fetch');
+    const { customer } = await call(
+      'wave_get_customer',
+      z.object({ customer: z.object({ id: z.string(), internalId: NumericString, name: z.string(), additionalContacts: z.array(z.unknown()) }) }),
+      { customerGlobalId: first.id },
+    );
+    expect(customer.id).toBe(first.id);
+  });
+
   it('wave_list_estimates returns one trimmed list', async () => {
     await call(
       'wave_list_estimates',

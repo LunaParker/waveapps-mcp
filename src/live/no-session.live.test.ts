@@ -136,6 +136,24 @@ const CALLS: Record<string, Record<string, unknown>> = {
   wave_convert_estimate_to_invoice: { estimateGlobalId: RELAY_ID },
   wave_get_estimate_pdf: { estimateGlobalId: RELAY_ID },
   wave_get_report: { report: 'profit_and_loss', startDate: '2026-01-01', endDate: '2026-03-31', basis: 'cash' },
+  wave_get_customer: { customerId: 1 },
+  wave_update_customer: {
+    customerId: 1,
+    name: 'Contract check',
+    email: 'nobody@example.com',
+    currency: 'CAD',
+    address: { addressLine1: '1 Main St', addressLine2: '', city: 'Toronto', provinceCode: 'ON', countryCode: 'CA', postalCode: 'M5V 1A1' },
+    shippingDetails: { name: 'Dock', phone: '555', instructions: 'Back door', address: { city: 'Toronto', provinceCode: 'ON', countryCode: 'CA' } },
+  },
+  wave_create_customer_statement: { customerId: 1, type: 'account_activity', fromDate: '2026-01-01', toDate: '2026-03-31' },
+  wave_send_customer_statement: {
+    statementId: RELAY_ID,
+    type: 'account_activity',
+    to: ['nobody@example.com'],
+    subject: 'Contract check',
+    message: 'Contract check',
+    fromAddress: 'nobody@example.com',
+  },
   wave_list_products: {},
   wave_get_product: { productId: 1 },
   wave_create_product: { name: 'Contract check', price: 1, incomeAccountId: 1, defaultSalesTaxes: [1] },
@@ -162,6 +180,8 @@ const GRAPHQL_ENUM_INPUTS: ReadonlyArray<[tool: string, field: string, base: Rec
   ['wave_update_estimate', 'depositUnit', { ...UNTAXED_ESTIMATE, depositStatus: 'ENABLED_OPTIONAL' }],
   ['wave_mark_estimate_sent', 'sendMethod', { estimateGlobalId: RELAY_ID }],
   ['wave_get_report', 'report', {}],
+  ['wave_create_customer_statement', 'type', { customerId: 1 }],
+  ['wave_send_customer_statement', 'type', { statementId: RELAY_ID, to: ['nobody@example.com'], subject: 'Contract check', fromAddress: 'nobody@example.com' }],
 ];
 
 // Explicit auth and business: nothing is read from env or ~/.config, and no refresher is wired.
