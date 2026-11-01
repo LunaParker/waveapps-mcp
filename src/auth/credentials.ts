@@ -2,6 +2,7 @@ import { chmodSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } f
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { secretStore, type SecretName, type SecretStore } from './secrets.js';
+import { cliCommand } from '../util/cli-command.js';
 
 /**
  * What lives in credentials.json. The password and TOTP secret do not: they sit in the OS
@@ -83,7 +84,7 @@ export function patchCredentials(partial: Partial<Omit<StoredCredentials, 'updat
     email: partial.email !== undefined ? partial.email : existing?.email,
   };
   if (merged.authToken.length === 0) {
-    throw new Error('Refusing to write credentials without an authToken. Run `npx waveapps-mcp login` first.');
+    throw new Error(`Refusing to write credentials without an authToken. Run \`${cliCommand('login')}\` first.`);
   }
   return writeCredentials(merged);
 }

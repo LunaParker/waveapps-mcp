@@ -69,6 +69,8 @@ echo "$(pwd)/dist/server.js"
 
 Wave doesn't give regular users an API key, so the MCP uses the same session your browser gets when you sign in. Wave's sign-in pages sit behind Cloudflare bot protection that turns away scripted requests, so signing in happens in a real Chromium window driven by [Playwright](https://playwright.dev). The session cookie stays on your machine.
 
+Run the commands in this section from the `waveapps-mcp` folder you just built. The package isn't on npm, so `npx waveapps-mcp` only finds it there. Errors from the server spell out the full `node …/dist/server.js` command instead, so they work from any folder.
+
 Install Playwright's Chromium once (about 150 MB):
 
 ```bash

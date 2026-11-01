@@ -1,5 +1,6 @@
 import { readCredentials } from '../auth/credentials.js';
 import { optionalEnv } from '../util/env.js';
+import { cliCommand } from '../util/cli-command.js';
 
 export interface WaveAuth {
   /** The value of the `waveapps` cookie from a logged-in next.waveapps.com session. */
@@ -24,7 +25,7 @@ export function loadAuth(): WaveAuth {
     return { authToken: stored.authToken, csrfToken: stored.csrfToken };
   }
   throw new Error(
-    'No Wave credentials found. Run `npx waveapps-mcp login` to log in, or set WAVE_AUTH_TOKEN (and WAVE_CSRF_TOKEN for mutations).',
+    `No Wave credentials found. Run \`${cliCommand('login')}\` to log in, or set WAVE_AUTH_TOKEN (and WAVE_CSRF_TOKEN for mutations).`,
   );
 }
 

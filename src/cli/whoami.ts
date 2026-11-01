@@ -1,5 +1,6 @@
 import { credentialsAgeSeconds, credentialsPath, readCredentials } from '../auth/credentials.js';
 import { secretStore, type SecretName, type SecretStore } from '../auth/secrets.js';
+import { cliCommand } from '../util/cli-command.js';
 
 export interface RunWhoamiDeps {
   console?: Pick<Console, 'log'>;
@@ -11,7 +12,7 @@ export function runWhoami(deps: RunWhoamiDeps = {}): number {
   const store = deps.store ?? secretStore();
   const creds = readCredentials();
   if (!creds) {
-    log(`[waveapps-mcp] No credentials at ${credentialsPath()} — run \`npx waveapps-mcp login\`.`);
+    log(`[waveapps-mcp] No credentials at ${credentialsPath()} — run \`${cliCommand('login')}\`.`);
     return 1;
   }
   const age = credentialsAgeSeconds();

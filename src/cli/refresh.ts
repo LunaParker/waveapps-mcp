@@ -3,6 +3,7 @@ import { credentialsPath, migrateLegacySecrets, patchCredentials, readCredential
 import { withProfileLock } from '../auth/profile-lock.js';
 import { refreshSession } from '../auth/refresh-session.js';
 import { secretStore, type SecretStore } from '../auth/secrets.js';
+import { cliCommand } from '../util/cli-command.js';
 
 export interface RunRefreshDeps {
   console?: Pick<Console, 'log' | 'error'>;
@@ -49,7 +50,7 @@ export async function runRefresh(deps: RunRefreshDeps = {}, options: RunRefreshO
     return REFRESH_EXIT_FAILURE;
   }
   if (!email || !password) {
-    err('[waveapps-mcp] No email and password on file. Run `npx waveapps-mcp save-password` first.');
+    err(`[waveapps-mcp] No email and password on file. Run \`${cliCommand('save-password')}\` first.`);
     return REFRESH_EXIT_NOT_CONFIGURED;
   }
 

@@ -1,5 +1,6 @@
 import type { BrowserContext, Page } from 'playwright';
 import { WAVE_AUTH0_ENTRY_URL, WAVE_AUTH_COOKIE, WAVE_INVALIDATED_SENTINEL, parseBusinessIdFromUrl } from './browser.js';
+import { cliCommand } from '../util/cli-command.js';
 
 /**
  * Thrown when Wave or Cloudflare puts something in front of the sign-in that only a person
@@ -8,7 +9,7 @@ import { WAVE_AUTH0_ENTRY_URL, WAVE_AUTH_COOKIE, WAVE_INVALIDATED_SENTINEL, pars
 export class SignInChallengeError extends Error {
   constructor(detail: string) {
     super(
-      `Automatic Wave sign-in stopped: ${detail}. Run \`npx waveapps-mcp login\` in a terminal ` +
+      `Automatic Wave sign-in stopped: ${detail}. Run \`${cliCommand('login')}\` in a terminal ` +
         'and sign in in the window it opens.',
     );
     this.name = 'SignInChallengeError';

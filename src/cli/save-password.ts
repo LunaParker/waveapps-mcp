@@ -2,6 +2,7 @@ import { credentialsPath, patchCredentials, readCredentials } from '../auth/cred
 import { secretStore, type SecretStore } from '../auth/secrets.js';
 import { totp } from '../auth/totp.js';
 import { Prompter, type PromptIo } from './prompter.js';
+import { cliCommand } from '../util/cli-command.js';
 
 export interface RunSavePasswordDeps {
   /** Test injection — defaults to a real `Prompter` bound to stdin/stdout. */
@@ -47,7 +48,7 @@ const BANNER_LINES: ReadonlyArray<string> = [
   wrap('  • you accept that this machine is now a higher-value target'),
   wrap('    than the 18-hour session cookie it replaces'),
   `║${' '.repeat(BANNER_WIDTH - 2)}║`,
-  wrap('Wipe at any time with:  npx waveapps-mcp logout'),
+  wrap('Wipe both at any time with the logout command.'),
   `╚${HR}╝`,
 ];
 
@@ -106,7 +107,7 @@ export async function runSavePassword(
 
     const existing = readCredentials();
     if (!existing) {
-      err('[waveapps-mcp] No credentials.json yet — run `npx waveapps-mcp login` once first.');
+      err(`[waveapps-mcp] No credentials.json yet — run \`${cliCommand('login')}\` once first.`);
       return SAVE_PW_EXIT_NO_INPUT;
     }
 
@@ -154,7 +155,7 @@ export async function runSavePassword(
     patchCredentials({ email });
     log('');
     log(`[waveapps-mcp] Email saved to ${credentialsPath()}; password${totpSecret ? ' and TOTP secret' : ''} saved to the OS credential store.`);
-    log('[waveapps-mcp] Automatic sign-in on expiry is now enabled. Try it with `npx waveapps-mcp refresh`.');
+    log(`[waveapps-mcp] Automatic sign-in on expiry is now enabled. Try it with \`${cliCommand('refresh')}\`.`);
     return SAVE_PW_EXIT_OK;
   } finally {
     io.close?.();
