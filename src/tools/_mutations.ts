@@ -1,4 +1,4 @@
-import { CUSTOMER_FRAGMENTS } from './_queries.js';
+import { CUSTOMER_FRAGMENTS, TRANSACTION_FIELDS } from './_queries.js';
 
 // GraphQL mutations captured verbatim from next.waveapps.com on 2026-05-11.
 // Wave's server may allow-list query texts; do NOT minify or rewrite.
@@ -384,5 +384,55 @@ export const PAYMENT_RECEIPT_MUTATION = `mutation SendPaymentReceipt($input: Inv
       path
       code
     }
+  }
+}`;
+
+const TX_ERRORS = `didSucceed
+    inputErrors {
+      message
+      path
+      code
+    }`;
+
+export const CREATE_TRANSACTION_MUTATION = `mutation CreateTransaction($input: TransactionCreateInput!) {
+  transactionCreate(input: $input) {
+    ${TX_ERRORS}
+    transaction {
+      ${TRANSACTION_FIELDS}
+    }
+  }
+}`;
+
+export const PATCH_TRANSACTION_MUTATION = `mutation PatchTransaction($input: TransactionPatchInput!) {
+  transactionPatch(input: $input) {
+    ${TX_ERRORS}
+    transaction {
+      ${TRANSACTION_FIELDS}
+    }
+  }
+}`;
+
+export const DELETE_TRANSACTION_MUTATION = `mutation DeleteTransaction($input: TransactionDeleteInput!) {
+  transactionDelete(input: $input) {
+    didSucceed
+    deletedTransactionIds
+  }
+}`;
+
+export const CREATE_TAG_MUTATION = `mutation CreateTag($input: CreateAccountingTagInput!) {
+  createAccountingTag(input: $input) {
+    ${TX_ERRORS}
+    tag {
+      id
+      name
+      description
+      archived
+    }
+  }
+}`;
+
+export const DELETE_TAGS_MUTATION = `mutation DeleteTags($input: DeleteAccountingTagsInput!) {
+  deleteAccountingTags(input: $input) {
+    didSucceed
   }
 }`;

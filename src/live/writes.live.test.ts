@@ -198,6 +198,35 @@ describe.skipIf(!writes)('Wave write flows on the test customer (npm run test:li
     });
   });
 
+  it('records, tags, edits, finds and deletes a transaction', async () => {
+    const { accounts } = await call('wave_list_accounts');
+    const list = accounts as Array<{ id: number; name: string; account_type: string; is_payment: boolean }>;
+    const bank = list.find((a) => a.is_payment && /cash/i.test(a.name)) ?? list.find((a) => a.is_payment);
+    const incomes = list.filter((a) => /income/i.test(a.account_type) && !a.is_payment);
+    const income = incomes.find((a) => /sales/i.test(a.name)) ?? incomes[0];
+    if (!bank || !income) throw new Error('Write tests need a payment account and an income account.');
+
+    const { tag } = await call('wave_create_tag', { name: 'TEST - contract check tag' });
+    onCleanup(`tag ${tag.id}`, () => call('wave_delete_tag', { tagId: tag.id }));
+
+    const { transaction: created } = await call('wave_create_transaction', {
+      date: '2026-11-01', description: 'TEST - live contract check', amount: '1.00', direction: 'deposit',
+      accountId: bank.id, categoryAccountId: income.id, tagIds: [tag.id],
+    });
+    onCleanup(`transaction ${created.id}`, () => call('wave_delete_transaction', { transactionId: created.id }));
+    expect(created).toMatchObject({ direction: 'DEPOSIT', account: { id: bank.id }, lines: [{ account: { id: income.id }, itemType: 'CREDIT', tags: [{ id: tag.id }] }] });
+
+    const { transaction: renamed } = await call('wave_update_transaction', { transactionId: created.id, description: 'TEST - live contract check, edited' });
+    expect(renamed.description).toBe('TEST - live contract check, edited');
+    expect(renamed.lines[0].tags).toEqual([{ id: tag.id, name: 'TEST - contract check tag' }]);
+    const { transaction: resized } = await call('wave_update_transaction', { transactionId: created.id, amount: '2.00' });
+    expect(Number(resized.amount)).toBe(2);
+    expect(resized.sequence).toBeGreaterThan(created.sequence);
+
+    const found = await call('wave_list_transactions', { description: 'TEST - live contract check, edited', startDate: '2026-11-01', endDate: '2026-11-01' });
+    expect((found.transactions as Array<{ id: string }>).map((t) => t.id)).toContain(created.id);
+  });
+
   it("emails an estimate to the test customer's own address", async () => {
     const est = await createEstimate();
     await call('wave_approve_estimate', { estimateGlobalId: est.id });

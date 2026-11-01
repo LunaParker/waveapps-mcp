@@ -13,7 +13,7 @@ This is an add-on that lets you ask **Claude** (or any other AI assistant that s
 
 …and Claude creates the invoice in Wave for you. Same for recording payments, adding customers, looking up old estimates, and so on.
 
-It works by giving Claude a set of 47 structured tools that map onto real Wave operations. Claude picks the right tools and calls them with the right arguments based on your conversation.
+It works by giving Claude a set of 55 structured tools that map onto real Wave operations. Claude picks the right tools and calls them with the right arguments based on your conversation.
 
 > **What's "MCP"?** [Model Context Protocol](https://modelcontextprotocol.io) is a standard way for AI assistants to call external tools. Anthropic's Claude apps speak it natively; so do Cursor, Continue, and a growing list of others.
 
@@ -38,6 +38,7 @@ Once it's installed, you can ask Claude to:
 - Draft, edit (one field at a time if you like), approve, send, mark-as-sent, or delete an invoice; new invoices follow your workspace's currency, payment terms, column headings, footer and memo unless you say otherwise
 - Duplicate an invoice, send a payment reminder or a payment receipt, and fetch an invoice's PDF as a file Claude can read or hand back to you
 - Record or remove a payment against an invoice
+- Record, look up, edit or delete bank and cash transactions (money in or out, categorised to an income or expense account), and create tags to label them
 - Draft, edit, approve, send, mark as sent or accepted, duplicate, or delete an estimate, turn one into an invoice, and fetch its PDF as a file
 
 Everything happens in your real Wave account. Claude doesn't have its own sandbox. Be deliberate with mutating operations, especially deletes and "send invoice".

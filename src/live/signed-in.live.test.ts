@@ -290,6 +290,20 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
     expect(out.sections.some((s) => s.rows.length > 0)).toBe(true);
   });
 
+  it('wave_list_transactions and wave_get_transaction give accounts by their wave_list_accounts ids', async () => {
+    const Account = z.object({ id: IntId.nullable(), relayId: z.string(), name: z.string() });
+    const Tx = z.object({ id: z.string(), date: z.string(), sequence: z.number().int(), direction: z.string(), account: Account.nullable(), lines: z.array(z.object({ account: Account.nullable(), itemType: z.string() })) });
+    const list = await call('wave_list_transactions', z.object({ transactions: z.array(Tx), pageInfo: z.object({ hasNextPage: z.boolean() }).loose() }), { first: 5 });
+    const first = list.transactions[0];
+    if (!first) return;
+    const { transaction } = await call('wave_get_transaction', z.object({ transaction: Tx }), { transactionId: first.id });
+    expect(transaction.id).toBe(first.id);
+  });
+
+  it('wave_list_tags', async () => {
+    await call('wave_list_tags', z.object({ tags: z.array(z.object({ id: z.string(), name: z.string() })), pageInfo: z.object({ currentPage: z.number() }).loose() }));
+  });
+
   it('wave_list_sales_taxes gives integer ids and numeric rates', async () => {
     const SalesTax = z.object({ id: IntId, relayId: z.string(), name: z.string(), rate: z.number().nullable(), isArchived: z.boolean() });
     const active = await call('wave_list_sales_taxes', z.object({ salesTaxes: z.array(SalesTax) }));

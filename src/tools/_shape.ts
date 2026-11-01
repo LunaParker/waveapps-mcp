@@ -690,3 +690,73 @@ export function shapeReport(v: unknown, detail: 'summary' | 'detailed'): ReportR
   const used = Array.isArray(reports[detail]) ? detail : Array.isArray(reports[other]) ? other : detail;
   return { detail: used, overview: shapeReportOverview(r['overview']), sections: arr(reports[used]).map(shapeReportSection) };
 }
+
+export interface TransactionAccount { id: number | null; relayId: string | null; name: string | null }
+export interface TransactionLine {
+  account: TransactionAccount | null;
+  amount: string | number | null;
+  itemType: string | null;
+  description: string | null;
+  customer: { id: string | null; name: string | null } | null;
+  tags: Array<{ id: string | null; name: string | null }>;
+}
+export interface TransactionSummary {
+  id: string | null;
+  date: string | null;
+  description: string | null;
+  notes: string | null;
+  amount: string | number | null;
+  currency: string | null;
+  direction: string | null;
+  sequence: number | null;
+  verificationStatus: string | null;
+  origin: string | null;
+  missingFields: unknown[];
+  account: TransactionAccount | null;
+  lines: TransactionLine[];
+}
+export interface TagSummary { id: string | null; name: string | null; description: string | null; archived: boolean | null; group: string | null }
+
+/** GraphQL accounts carry the REST integer id as `classicId`; that is the `id` callers see. */
+function shapeTransactionAccount(v: unknown): TransactionAccount | null {
+  const a = obj(v);
+  if (!a) return null;
+  const classic = idString(a['classicId']);
+  return { id: classic === null ? null : num(Number(classic)), relayId: str(a['id']), name: str(a['name']) };
+}
+
+export function shapeTransaction(v: unknown): TransactionSummary {
+  const t = obj(v) ?? {};
+  const anchor = obj(t['anchorLineItem']);
+  return {
+    id: str(t['id']),
+    date: str(t['date']),
+    description: str(t['description']),
+    notes: str(t['notes']),
+    amount: scalar(t['amount']),
+    currency: code(t['currency']),
+    direction: str(t['direction']),
+    sequence: num(t['sequence']),
+    verificationStatus: str(t['verificationStatus']),
+    origin: str(obj(t['origin'])?.['type']),
+    missingFields: arr(t['missingFields']),
+    account: shapeTransactionAccount(anchor?.['account']),
+    lines: arr(t['lineItems']).map((l) => {
+      const line = obj(l) ?? {};
+      const customer = obj(line['customer']);
+      return {
+        account: shapeTransactionAccount(line['account']),
+        amount: scalar(line['amount']),
+        itemType: str(line['itemType']),
+        description: str(line['description']),
+        customer: customer ? { id: str(customer['id']), name: str(customer['name']) } : null,
+        tags: arr(line['tags']).map((g) => ({ id: str(obj(g)?.['id']), name: str(obj(g)?.['name']) })),
+      };
+    }),
+  };
+}
+
+export function shapeTag(v: unknown): TagSummary {
+  const t = obj(v) ?? {};
+  return { id: str(t['id']), name: str(t['name']), description: str(t['description']), archived: bool(t['archived']), group: str(obj(t['group'])?.['name']) };
+}
