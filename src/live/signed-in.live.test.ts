@@ -7,6 +7,7 @@ import { WaveClient, loadAuth } from '../client/index.js';
 import { WaveAuthError } from '../client/errors.js';
 import { registerAllTools } from '../tools/index.js';
 import { createStubServer, type StubServer } from '../tools/_test_utils.js';
+import { cliCommand } from '../util/cli-command.js';
 
 const signedIn = process.env['WAVE_LIVE_SIGNED_IN'] === '1';
 
@@ -116,7 +117,7 @@ describe.skipIf(!signedIn)('Wave read endpoints, signed in (npm run test:live:si
       listed = z.array(Business).parse(await client.rest.get('/businesses/', { include_personal: true }));
     } catch (err) {
       if (err instanceof WaveAuthError) {
-        throw new Error('Wave session expired. Run `npx waveapps-mcp paste` with fresh cookies, then re-run.');
+        throw new Error(`Wave session expired. Run \`${cliCommand('login')}\` to sign in again, then re-run.`);
       }
       throw err;
     }

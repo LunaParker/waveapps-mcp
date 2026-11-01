@@ -125,10 +125,10 @@ describe('registerEstimateTools', () => {
     const mock = createMockClient();
     mock.gql.execute.mockResolvedValueOnce({ estimateCreate: { didSucceed: true, estimate: { id: 'x' } } });
     registerEstimateTools(stub.server as never, mock.client);
-    await stub.invoke('wave_create_estimate', { customerId: 1, items: [{ ...ITEM, taxIds: [1897235638, 'TAX_REL'] }] });
+    await stub.invoke('wave_create_estimate', { customerId: 1, items: [{ ...ITEM, taxIds: [1234567, 'TAX_REL'] }] });
     const taxes = mock.gql.execute.mock.calls[0]![0].variables.input.items[0].taxes;
     expect(taxes).toEqual([
-      { salesTaxId: Buffer.from(`Business:${BUSINESS_UUID};SalesTax:1897235638`, 'utf8').toString('base64') },
+      { salesTaxId: Buffer.from(`Business:${BUSINESS_UUID};SalesTax:1234567`, 'utf8').toString('base64') },
       { salesTaxId: 'TAX_REL' },
     ]);
   });

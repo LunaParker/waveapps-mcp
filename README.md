@@ -232,7 +232,7 @@ Brief pointers if you want to hack on this:
 - Source layout, API map, and captured GraphQL operations live in `docs/` locally, gitignored on purpose so the reverse-engineering reference doesn't get committed to a public mirror.
 - Run the test suite: `npm test` (or `npm run test:coverage` for an HTML coverage report in `coverage/`). It's fully mocked and never touches Wave.
 - Check the tools still match Wave's undocumented API: `npm run test:live`. No session needed: every tool runs with a bogus token, so Wave rejects it at auth, but only after confirming the REST route exists and the GraphQL query, input fields and enum values still fit its schema.
-- Add read-only checks against your own account with `npm run test:live:signed-in` (or set `WAVE_LIVE_SIGNED_IN=1`). Uses your stored session and never logs in for you; if it has expired, the run stops with one "re-paste your cookies" error.
+- Add read-only checks against your own account with `npm run test:live:signed-in` (or set `WAVE_LIVE_SIGNED_IN=1`). Uses your stored session and never signs in for you; if it has expired, the run stops with one "sign in again" error.
 - Smoke-test against a live Wave account: `WAVE_AUTH_TOKEN=... npm run smoke`
 - Sign-in lives in `src/auth/`: `playwright.ts` launches Chromium in a form Cloudflare accepts (full browser, not the headless shell, without `HeadlessChrome` in the user agent), `auth0-sign-in.ts` walks Wave's Auth0 pages, `secrets.ts` wraps the OS credential store. Tests swap in an in-memory store (`src/test-setup.ts`), so they never touch your real Keychain.
 
