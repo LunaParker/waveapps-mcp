@@ -194,7 +194,9 @@ You can use, modify, and redistribute this freely. There's no warranty; if it br
 Brief pointers if you want to hack on this:
 
 - Source layout, API map, and captured GraphQL operations live in `docs/` locally, gitignored on purpose so the reverse-engineering reference doesn't get committed to a public mirror.
-- Run the test suite: `npm test` (or `npm run test:coverage` for an HTML coverage report in `coverage/`)
+- Run the test suite: `npm test` (or `npm run test:coverage` for an HTML coverage report in `coverage/`). It's fully mocked and never touches Wave.
+- Check the tools still match Wave's undocumented API: `npm run test:live`. No session needed: every tool runs with a bogus token, so Wave rejects it at auth, but only after confirming the REST route exists and the GraphQL query, input fields and enum values still fit its schema.
+- Add read-only checks against your own account with `npm run test:live:signed-in` (or set `WAVE_LIVE_SIGNED_IN=1`). Uses your stored session and never logs in for you; if it has expired, the run stops with one "re-paste your cookies" error.
 - Smoke-test against a live Wave account: `WAVE_AUTH_TOKEN=... npm run smoke`
 - An experimental browser-driven login flow is available via `npx waveapps-mcp login`. It uses puppeteer-core + the stealth plugin to try to get past Google's OAuth check. Often blocked; the manual `paste` flow above is more reliable.
 

@@ -1,8 +1,10 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
+    // Live contract tests call Wave's real API; they run via vitest.live.config.ts only.
+    exclude: [...configDefaults.exclude, 'src/**/*.live.test.ts'],
     environment: 'node',
     globals: false,
     restoreMocks: true,
