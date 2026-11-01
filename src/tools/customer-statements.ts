@@ -87,7 +87,7 @@ export function registerCustomerStatementTools(server: McpServer, client: WaveCl
         fromAddress: z.email().optional(),
         ccMyself: z.boolean().default(false),
       },
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async (args) => {
       let { fromAddress, subject } = args;
