@@ -137,6 +137,18 @@ const CALLS: Record<string, Record<string, unknown>> = {
   wave_get_estimate_pdf: { estimateGlobalId: RELAY_ID },
   wave_get_report: { report: 'profit_and_loss', startDate: '2026-01-01', endDate: '2026-03-31', basis: 'cash' },
   wave_get_customer: { customerId: 1 },
+  wave_list_transactions: { first: 5, after: 'cursor', startDate: '2026-01-01', endDate: '2026-03-31', description: 'Contract check', tagIds: [RELAY_ID] },
+  wave_get_transaction: { transactionId: RELAY_ID },
+  // Relay account ids and an explicit sequence skip the lookups, so Wave validates the write itself.
+  wave_create_transaction: {
+    date: '2026-01-01', description: 'Contract check', amount: '1.00', direction: 'deposit', accountId: RELAY_ID, categoryAccountId: RELAY_ID,
+    notes: 'Contract check', customerId: 1, tagIds: [RELAY_ID],
+  },
+  wave_update_transaction: { transactionId: RELAY_ID, sequence: 1, date: '2026-01-02', description: 'Contract check', notes: 'Contract check' },
+  wave_delete_transaction: { transactionId: RELAY_ID, sequence: 1 },
+  wave_list_tags: { page: 1, pageSize: 10 },
+  wave_create_tag: { name: 'Contract check', description: 'Contract check' },
+  wave_delete_tag: { tagId: RELAY_ID },
   wave_get_invoice_pdf: { invoiceId: '1' },
   wave_duplicate_invoice: { invoiceId: '1' },
   wave_send_invoice_reminder: { invoiceId: '1', to: ['nobody@example.com'], subject: 'Contract check', message: 'Contract check', fromAddress: 'nobody@example.com' },
@@ -184,6 +196,7 @@ const GRAPHQL_ENUM_INPUTS: ReadonlyArray<[tool: string, field: string, base: Rec
   ['wave_update_estimate', 'depositUnit', { ...UNTAXED_ESTIMATE, depositStatus: 'ENABLED_OPTIONAL' }],
   ['wave_mark_estimate_sent', 'sendMethod', { estimateGlobalId: RELAY_ID }],
   ['wave_get_report', 'report', {}],
+  ['wave_list_transactions', 'sort', {}],
   ['wave_create_customer_statement', 'type', { customerId: 1 }],
   ['wave_send_customer_statement', 'type', { statementId: RELAY_ID, to: ['nobody@example.com'], subject: 'Contract check', fromAddress: 'nobody@example.com' }],
 ];

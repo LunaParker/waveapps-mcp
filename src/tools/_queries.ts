@@ -530,3 +530,113 @@ export const GET_CUSTOMER_QUERY = `query GetCustomer($businessId: ID!, $customer
 }
 
 ${CUSTOMER_FRAGMENTS}`;
+
+const TRANSACTION_FIELDS = `id
+      date
+      description
+      notes
+      amount
+      direction
+      sequence
+      verificationStatus
+      missingFields
+      currency {
+        code
+      }
+      origin {
+        type
+      }
+      anchorLineItem {
+        order
+        account {
+          id
+          classicId
+          name
+        }
+        amount
+        itemType
+      }
+      lineItems {
+        order
+        account {
+          id
+          classicId
+          name
+        }
+        amount
+        itemType
+        description
+        customer {
+          id
+          name
+        }
+        tags {
+          id
+          name
+        }
+      }`;
+
+export const LIST_TRANSACTIONS_QUERY = `query ListTransactions($businessId: ID!, $first: Int, $after: String, $filters: TransactionFilter, $sort: [TransactionSort!]) {
+  business(id: $businessId) {
+    id
+    transactions(first: $first, after: $after, filters: $filters, sort: $sort) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      edges {
+        node {
+          ${TRANSACTION_FIELDS}
+        }
+      }
+    }
+  }
+}`;
+
+export const GET_TRANSACTION_QUERY = `query GetTransaction($businessId: ID!, $transactionId: ID!) {
+  business(id: $businessId) {
+    id
+    transaction(id: $transactionId) {
+      ${TRANSACTION_FIELDS}
+    }
+  }
+}`;
+
+/** Every active account with the integer id REST uses, so tools can take wave_list_accounts ids. */
+export const ACCOUNT_IDS_QUERY = `query ListAccountIds($businessId: ID!) {
+  business(id: $businessId) {
+    id
+    accounts(page: 1, pageSize: 500, isArchived: false) {
+      edges {
+        node {
+          id
+          classicId
+          name
+        }
+      }
+    }
+  }
+}`;
+
+export const LIST_TAGS_QUERY = `query ListTags($businessId: ID!, $pagination: AccountingTagsPaginationInput!, $filters: AccountingTagsFiltersInput) {
+  accountingTags(businessId: $businessId, pagination: $pagination, filters: $filters) {
+    edges {
+      node {
+        id
+        name
+        description
+        archived
+        group {
+          id
+          name
+        }
+      }
+    }
+    pageInfo {
+      currentPage
+      totalPages
+    }
+  }
+}`;
+
+export { TRANSACTION_FIELDS };

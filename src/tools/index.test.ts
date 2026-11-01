@@ -18,11 +18,15 @@ describe('registerAllTools', () => {
       'wave_create_estimate',
       'wave_create_invoice',
       'wave_create_product',
+      'wave_create_tag',
+      'wave_create_transaction',
       'wave_delete_customer',
       'wave_delete_estimate',
       'wave_delete_invoice',
       'wave_delete_invoice_payment',
       'wave_delete_product',
+      'wave_delete_tag',
+      'wave_delete_transaction',
       'wave_duplicate_estimate',
       'wave_duplicate_invoice',
       'wave_get_business',
@@ -34,6 +38,7 @@ describe('registerAllTools', () => {
       'wave_get_invoice_settings',
       'wave_get_product',
       'wave_get_report',
+      'wave_get_transaction',
       'wave_list_accounts',
       'wave_list_bills',
       'wave_list_businesses',
@@ -43,6 +48,8 @@ describe('registerAllTools', () => {
       'wave_list_products',
       'wave_list_receipts',
       'wave_list_sales_taxes',
+      'wave_list_tags',
+      'wave_list_transactions',
       'wave_mark_estimate_sent',
       'wave_mark_invoice_sent',
       'wave_record_invoice_payment',
@@ -56,8 +63,9 @@ describe('registerAllTools', () => {
       'wave_update_estimate',
       'wave_update_invoice',
       'wave_update_product',
+      'wave_update_transaction',
     ]);
-    expect(names).toHaveLength(47);
+    expect(names).toHaveLength(55);
   });
 
   it('marks every tool that emails someone as destructive, so clients ask before it runs', () => {
