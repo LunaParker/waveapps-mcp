@@ -51,4 +51,14 @@ describe('registerAllTools', () => {
     ]);
     expect(names).toHaveLength(39);
   });
+
+  it('marks every tool that emails someone as destructive, so clients ask before it runs', () => {
+    const stub = createStubServer();
+    registerAllTools(stub.server as never, createMockClient().client);
+    const senders = [...stub.configs.entries()].filter(([name]) => name.startsWith('wave_send_'));
+    expect(senders.length).toBeGreaterThan(0);
+    for (const [name, config] of senders) {
+      expect((config as { annotations?: { destructiveHint?: boolean } }).annotations?.destructiveHint, name).toBe(true);
+    }
+  });
 });
