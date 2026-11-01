@@ -24,8 +24,9 @@ interface MutationPayload {
   customer?: unknown;
 }
 
-/** Wave's list query has no search argument, so the search fetches one large page and filters here. */
+/** A search reads up to SEARCH_MAX_PAGES pages of SEARCH_PAGE_SIZE customers. */
 const SEARCH_PAGE_SIZE = 500;
+const SEARCH_MAX_PAGES = 10;
 
 function matches(c: CustomerSummary, needle: string): boolean {
   return [c.name, c.firstName, c.lastName, c.email, c.displayId].some((v) => v !== null && v.toLowerCase().includes(needle));
@@ -46,26 +47,39 @@ export function registerCustomerTools(server: McpServer, client: WaveClient): vo
           .string()
           .min(1)
           .optional()
-          .describe('Case-insensitive match on name, first or last name, email or display id. Ignores page and pageSize.'),
+          .describe(
+            'Case-insensitive match on name, first or last name, email or display id. Walks up to 5000 customers and ignores page and pageSize; `searchedAllPages: false` in the result means the roster was larger than that.',
+          ),
       },
       annotations: { readOnlyHint: true, openWorldHint: true },
     },
     async ({ businessId, page, pageSize, search }) => {
-      const data = await client.gql.execute<CustomerListResponse>({
-        operationName: 'CustomerListListCustomers',
-        query: CUSTOMER_LIST_QUERY,
-        variables: {
-          businessId: client.businessGlobalId(businessId),
-          page: search === undefined ? page : 1,
-          pageSize: search === undefined ? pageSize : SEARCH_PAGE_SIZE,
-        },
-      });
-      let customers = flattenConnection(data.business.customers).map(shapeCustomer);
-      if (search !== undefined) {
-        const needle = search.toLowerCase();
-        customers = customers.filter((c) => matches(c, needle));
+      const businessGlobalId = client.businessGlobalId(businessId);
+      const fetchPage = (p: number, size: number) =>
+        client.gql.execute<CustomerListResponse>({
+          operationName: 'CustomerListListCustomers',
+          query: CUSTOMER_LIST_QUERY,
+          variables: { businessId: businessGlobalId, page: p, pageSize: size },
+        });
+      if (search === undefined) {
+        const data = await fetchPage(page, pageSize);
+        return jsonResult({ customers: flattenConnection(data.business.customers).map(shapeCustomer), pageInfo: data.business.customers.pageInfo });
       }
-      return jsonResult({ customers, pageInfo: data.business.customers.pageInfo });
+      // The list query has no search argument, so walk the pages (capped) and filter here.
+      const needle = search.toLowerCase();
+      const matched: CustomerSummary[] = [];
+      let totalPages = 1;
+      for (let p = 1; p <= totalPages && p <= SEARCH_MAX_PAGES; p += 1) {
+        const data = await fetchPage(p, SEARCH_PAGE_SIZE);
+        totalPages = data.business.customers.pageInfo.totalPages;
+        for (const c of flattenConnection(data.business.customers).map(shapeCustomer)) if (matches(c, needle)) matched.push(c);
+      }
+      return jsonResult({
+        customers: matched,
+        pageInfo: { currentPage: 1, totalPages },
+        matched: matched.length,
+        searchedAllPages: totalPages <= SEARCH_MAX_PAGES,
+      });
     },
   );
 

@@ -6,7 +6,7 @@ import { toCompositeGlobalId } from '../client/ids.js';
 import { addDays, todayIso } from '../util/dates.js';
 import { INVOICE_SEND_MUTATION } from './_mutations.js';
 import { jsonResult } from './_helpers.js';
-import { InvoiceItemInput, bodyArgsFromInvoice, buildInvoiceBody, hasFullState, type InvoiceBodyArgs } from './_invoice-body.js';
+import { InvoiceItemInput, bodyArgsFromInvoice, buildInvoiceBody, carriedFromRawInvoice, hasFullState, type InvoiceBodyArgs } from './_invoice-body.js';
 import { looksLikeInvoice, shapeBusiness, shapeInvoice, shapeInvoiceSummary } from './_shape.js';
 
 const InvoiceStatus = z.enum(['draft', 'unpaid', 'paid', 'overdue', 'partial']);
@@ -97,7 +97,7 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
         embed_customer: true,
       });
       if (raw) return jsonResult(paged);
-      return jsonResult({ items: paged.items.map(shapeInvoiceSummary), meta: paged.meta });
+      return jsonResult({ items: (Array.isArray(paged.items) ? paged.items : []).map(shapeInvoiceSummary), meta: paged.meta });
     },
   );
 
@@ -196,7 +196,7 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
     {
       title: 'Update a Wave invoice',
       description:
-        'Changes an invoice. Pass only the fields to change: the tool reads the current invoice and keeps everything else, including line items and approval state. To change lines, pass the complete new `items` list. Pass `status: "draft"` to unapprove or "saved" to approve.',
+        'Changes an invoice. Pass only the fields to change: the tool reads the current invoice and keeps everything else, including line items, discounts, attachments, tags, layout flags and approval state. To change lines, pass the complete new `items` list. Pass `status: "draft"` to unapprove or "saved" to approve. If the stored invoice is missing something Wave needs back (for example a deleted product on a line), the error names it and you can supply that field.',
       inputSchema: {
         businessId: z.uuid().optional(),
         invoiceId: z.string().min(1).describe('Invoice `id` from wave_list_invoices.'),
@@ -217,9 +217,13 @@ export function registerInvoiceTools(server: McpServer, client: WaveClient): voi
       const id = client.businessId(businessId);
       const path = invoicePath(id, invoiceId);
       const changes = definedOnly(supplied);
-      const merged: InvoiceBodyArgs = hasFullState(changes)
-        ? changes
-        : { ...bodyArgsFromInvoice(shapeInvoice(await client.rest.get<unknown>(path, INVOICE_EMBEDS))), ...changes };
+      let merged: InvoiceBodyArgs;
+      if (hasFullState(changes)) {
+        merged = changes;
+      } else {
+        const raw = await client.rest.get<unknown>(path, INVOICE_EMBEDS);
+        merged = { ...bodyArgsFromInvoice(shapeInvoice(raw), changes), carry: carriedFromRawInvoice(raw) };
+      }
       const invoice = await client.rest.patch<unknown>(path, buildInvoiceBody(merged));
       return jsonResult({ invoice: shapeInvoice(invoice) });
     },

@@ -88,20 +88,37 @@ function itemsForApi(
   }));
 }
 
-/** One more than the highest integer estimate number, or '1' when there are none. */
-async function nextEstimateNumber(client: WaveClient, businessGlobalId: string): Promise<string> {
+const NUMBER_CHECK_LIMIT = 20;
+
+async function listEstimateNumbers(client: WaveClient, businessGlobalId: string, variables: Record<string, unknown>): Promise<string[]> {
   const data = await client.gql.execute<EstimatesResponse>({
     operationName: 'GetEstimates',
     query: ESTIMATES_QUERY,
-    variables: { businessId: businessGlobalId, page: 1, pageSize: 50, sort: 'ESTIMATE_NUMBER_DESC', activeStatus: 'ACTIVE', draftStatus: 'DRAFT' },
+    variables: { businessId: businessGlobalId, page: 1, pageSize: 50, activeStatus: 'ACTIVE', draftStatus: 'DRAFT', ...variables },
   });
-  const numbers = flattenConnection(data.business.allEstimates).map((n) => shapeEstimate(n).estimateNumber);
+  return flattenConnection(data.business.allEstimates)
+    .map((n) => shapeEstimate(n).estimateNumber)
+    .filter((n): n is string => n !== null);
+}
+
+/** One more than the highest integer number, checked against Wave because its number sort may be textual. Keeps zero padding. */
+async function nextEstimateNumber(client: WaveClient, businessGlobalId: string): Promise<string> {
+  const numbers = await listEstimateNumbers(client, businessGlobalId, { sort: 'ESTIMATE_NUMBER_DESC' });
   if (numbers.length === 0) return '1';
-  const integers = numbers.filter((n): n is string => n !== null && /^\d+$/.test(n)).map(Number);
+  const integers = numbers.filter((n) => /^\d+$/.test(n));
   if (integers.length === 0) {
     throw new Error(`Existing estimate numbers are not plain integers (latest: ${numbers[0]}); pass estimateNumber explicitly.`);
   }
-  return String(Math.max(...integers) + 1);
+  const widest = integers.reduce((a, b) => (b.length > a.length ? b : a));
+  const width = widest.startsWith('0') ? widest.length : 0;
+  let candidate = Math.max(...integers.map(Number)) + 1;
+  for (let attempt = 0; attempt < NUMBER_CHECK_LIMIT; attempt += 1) {
+    const text = String(candidate).padStart(width, '0');
+    const taken = await listEstimateNumbers(client, businessGlobalId, { estimateNumber: text });
+    if (!taken.includes(text)) return text;
+    candidate += 1;
+  }
+  throw new Error(`Could not find a free estimate number after ${NUMBER_CHECK_LIMIT} tries; pass estimateNumber explicitly.`);
 }
 
 async function businessCurrency(client: WaveClient, businessUuid: string): Promise<string> {
@@ -246,7 +263,7 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
         poNumber: z.string().default(''),
         estimateDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        currency: z.string().length(3).toUpperCase().default('CAD'),
+        currency: z.string().length(3).toUpperCase().optional().describe('ISO 4217 code. Defaults to the business currency.'),
         exchangeRate: z.string().default('1'),
         memo: z.string().default(''),
         footer: z.string().default(''),
@@ -276,12 +293,13 @@ export function registerEstimateTools(server: McpServer, client: WaveClient): vo
       if (depositEnabled && (args.depositUnit === undefined || args.depositValue === undefined)) {
         throw new Error(`depositStatus ${args.depositStatus} needs both depositUnit and depositValue.`);
       }
+      const currency = args.currency ?? (await businessCurrency(client, businessUuid));
       const input = {
         id: args.estimateGlobalId,
         status: args.status,
         exchangeRate: args.exchangeRate,
         attachmentIds: [],
-        currency: args.currency,
+        currency,
         customerId: toCompositeGlobalId(businessUuid, 'Customer', args.customerId),
         estimateNumber: args.estimateNumber,
         poNumber: args.poNumber,

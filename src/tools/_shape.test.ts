@@ -127,6 +127,7 @@ describe('shapeInvoice', () => {
         description: 'Design work',
         quantity: 1,
         price: 100,
+        account_id: 301,
         product: { id: 601, name: 'Design', income_account: { id: 301, name: 'Consulting Income' } },
         taxes: [{ id: 701, amount: 13, sales_tax: { id: 401, name: 'HST', abbreviation: 'HST', rate: 0.13 } }],
       },
@@ -240,15 +241,30 @@ describe('shapeCustomer (GraphQL)', () => {
     const out = shapeCustomer(raw);
     expect(out).toEqual({
       id: 'QnVzaW5lc3M6eDtDdXN0b21lcjoyMDE=', internalId: '201', displayId: 'C-1', name: 'Example Co', firstName: 'Ex',
-      lastName: 'Ample', email: 'billing@example.com', phone: '5550100', mobile: '', website: 'https://example.com',
+      lastName: 'Ample', email: 'billing@example.com', phone: '5550100', mobile: '', fax: '', tollFree: '', website: 'https://example.com',
       internalNotes: 'net 15', currency: 'CAD',
       address: { addressLine1: '1 Example St', addressLine2: '', city: 'Exampleville', province: 'ON', country: 'CA', postalCode: 'A1A 1A1' },
+      shippingDetails: null,
       outstandingAmount: '113.00', overdueAmount: '0.00',
       additionalContacts: [{ id: 'c1', name: 'AP', email: 'ap@example.com', phone: '' }],
       createdAt: '2020-01-01T00:00:00Z', modifiedAt: '2020-01-02T00:00:00Z',
     });
     expect(JSON.stringify(out)).not.toContain('4242');
     expect(JSON.stringify(out)).not.toContain('__typename');
+  });
+
+  it('flattens shipping details when present', () => {
+    const out = shapeCustomer({
+      id: 'c', shippingDetails: {
+        name: 'Receiving', instructions: 'Side door', phone: '5550199',
+        address: { addressLine1: '2 Dock St', addressLine2: '', city: 'Exampleville', province: { code: 'ON' }, country: { code: 'CA' }, postalCode: 'B2B 2B2', __typename: 'Address' },
+        __typename: 'ShippingDetails',
+      },
+    });
+    expect(out.shippingDetails).toEqual({
+      name: 'Receiving', instructions: 'Side door', phone: '5550199',
+      address: { addressLine1: '2 Dock St', addressLine2: '', city: 'Exampleville', province: 'ON', country: 'CA', postalCode: 'B2B 2B2' },
+    });
   });
 });
 

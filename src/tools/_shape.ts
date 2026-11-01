@@ -36,6 +36,7 @@ export interface InvoiceItem {
   description: string | null;
   quantity: number | null;
   price: number | null;
+  account_id: number | null;
   product: { id: number | null; name: string | null; income_account: AccountRef | null };
   taxes: Array<{ id: number | null; amount: number | null; sales_tax: SalesTaxRef }>;
 }
@@ -100,6 +101,15 @@ export interface AccountSummary {
   currency: string | null;
 }
 
+export interface CustomerAddress {
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  province: string | null;
+  country: string | null;
+  postalCode: string | null;
+}
+
 export interface CustomerSummary {
   id: string | null;
   internalId: string | null;
@@ -110,17 +120,13 @@ export interface CustomerSummary {
   email: string | null;
   phone: string | null;
   mobile: string | null;
+  fax: string | null;
+  tollFree: string | null;
   website: string | null;
   internalNotes: string | null;
   currency: string | null;
-  address: {
-    addressLine1: string | null;
-    addressLine2: string | null;
-    city: string | null;
-    province: string | null;
-    country: string | null;
-    postalCode: string | null;
-  } | null;
+  address: CustomerAddress | null;
+  shippingDetails: { name: string | null; instructions: string | null; phone: string | null; address: CustomerAddress | null } | null;
   outstandingAmount: string | number | null;
   overdueAmount: string | number | null;
   additionalContacts: Array<{ id: string | null; name: string | null; email: string | null; phone: string | null }>;
@@ -255,6 +261,7 @@ export function shapeInvoiceItem(v: unknown): InvoiceItem {
     description: str(it['description']),
     quantity: num(it['quantity']),
     price: num(it['price']),
+    account_id: num(it['account_id']),
     product: { id: num(product['id']), name: str(product['name']), income_account: shapeAccountRef(product['income_account']) },
     taxes: arr(it['taxes']).map((t) => {
       const tax = obj(t) ?? {};
@@ -346,9 +353,21 @@ export function shapeAccount(v: unknown): AccountSummary {
   };
 }
 
+function shapeAddress(v: unknown): CustomerAddress | null {
+  const a = obj(v);
+  if (!a) return null;
+  return {
+    addressLine1: str(a['addressLine1']),
+    addressLine2: str(a['addressLine2']),
+    city: str(a['city']),
+    province: code(a['province']),
+    country: code(a['country']),
+    postalCode: str(a['postalCode']),
+  };
+}
+
 export function shapeCustomer(v: unknown): CustomerSummary {
   const c = obj(v) ?? {};
-  const address = obj(c['address']);
   return {
     id: str(c['id']),
     internalId: idString(c['internalId']),
@@ -359,19 +378,16 @@ export function shapeCustomer(v: unknown): CustomerSummary {
     email: str(c['email']),
     phone: str(c['phone']),
     mobile: str(c['mobile']),
+    fax: str(c['fax']),
+    tollFree: str(c['tollFree']),
     website: str(c['website']),
     internalNotes: str(c['internalNotes']),
     currency: code(c['currency']),
-    address: address
-      ? {
-          addressLine1: str(address['addressLine1']),
-          addressLine2: str(address['addressLine2']),
-          city: str(address['city']),
-          province: code(address['province']),
-          country: code(address['country']),
-          postalCode: str(address['postalCode']),
-        }
-      : null,
+    address: shapeAddress(c['address']),
+    shippingDetails: (() => {
+      const s = obj(c['shippingDetails']);
+      return s ? { name: str(s['name']), instructions: str(s['instructions']), phone: str(s['phone']), address: shapeAddress(s['address']) } : null;
+    })(),
     outstandingAmount: scalar(obj(c['outstandingAmount'])?.['value']),
     overdueAmount: scalar(obj(c['overdueAmount'])?.['value']),
     additionalContacts: arr(c['additionalContacts']).map((x) => {

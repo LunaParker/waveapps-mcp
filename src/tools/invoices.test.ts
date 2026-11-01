@@ -105,6 +105,13 @@ describe('wave_list_invoices', () => {
     const out = await stub.parsed('wave_list_invoices', { raw: true });
     expect(out).toEqual(paged);
   });
+
+  it('returns an empty list when Wave sends something that is not an array', async () => {
+    const { stub, mock } = setup();
+    mock.rest.getPaged.mockResolvedValueOnce({ items: { detail: 'odd' }, meta: { page: 1, pageSize: 25, totalCount: 0, totalPages: 0 } });
+    const out = (await stub.parsed('wave_list_invoices', {})) as { items: unknown[] };
+    expect(out.items).toEqual([]);
+  });
 });
 
 describe('wave_get_invoice', () => {
@@ -277,6 +284,58 @@ describe('wave_update_invoice', () => {
     answerGets(mock, { invoice: { ...RAW_INVOICE, items: [{ ...RAW_INVOICE.items[0], product: { id: null, name: 'Design', income_account: ACCOUNT } }] } });
     await expect(stub.invoke('wave_update_invoice', { invoiceId: '1', memo: 'x' })).rejects.toThrow(/product id on line 1/);
     expect(mock.rest.patch).not.toHaveBeenCalled();
+  });
+
+  it('carries discounts, attachments, tags and layout flags over from the stored invoice', async () => {
+    const { stub, mock } = setup();
+    const stored = {
+      ...RAW_INVOICE,
+      discounts: [{ id: 801, url: 'u', description: 'Loyalty', amount: 10 }],
+      attachments: [{ id: 901, url: 'u', name: 'scope.pdf' }],
+      tag_ids: [5, 6],
+      hide_quantity: true,
+      require_terms_of_service_agreement: true,
+    };
+    answerGets(mock, { invoice: stored });
+    mock.rest.patch.mockResolvedValueOnce(stored);
+    await stub.invoke('wave_update_invoice', { invoiceId: '1', memo: 'x' });
+    const body = mock.rest.patch.mock.calls[0]![1] as Record<string, unknown>;
+    expect(body['discounts']).toEqual(stored.discounts);
+    expect(body['attachment_ids']).toEqual([901]);
+    expect(body['tag_ids']).toEqual([5, 6]);
+    expect(body).toMatchObject({ hide_quantity: true, hide_item: false, hide_description: false, hide_price: false, hide_amount: false, require_terms_of_service_agreement: true });
+  });
+
+  it('accepts a supplied field even when the stored invoice lacks it', async () => {
+    const { stub, mock } = setup();
+    answerGets(mock, { invoice: { ...RAW_INVOICE, items: [{ ...RAW_INVOICE.items[0], product: { id: null, name: null, income_account: null } }] } });
+    mock.rest.patch.mockResolvedValueOnce(RAW_INVOICE);
+    await stub.invoke('wave_update_invoice', { invoiceId: '1', items: [ITEM] });
+    const body = mock.rest.patch.mock.calls[0]![1] as Record<string, unknown>;
+    expect((body['items'] as unknown[]).length).toBe(1);
+    expect(body['customer']).toEqual({ id: 201 });
+  });
+
+  it('refuses to guess a missing status, exchange rate, quantity or line list', async () => {
+    const { stub, mock } = setup();
+    answerGets(mock, { invoice: { ...RAW_INVOICE, status: null } });
+    await expect(stub.invoke('wave_update_invoice', { invoiceId: '1', memo: 'x' })).rejects.toThrow(/status/);
+    answerGets(mock, { invoice: { ...RAW_INVOICE, exchange_rate: '1.3500000000' } });
+    await expect(stub.invoke('wave_update_invoice', { invoiceId: '1', memo: 'x' })).rejects.toThrow(/exchange rate/);
+    answerGets(mock, { invoice: { ...RAW_INVOICE, items: [{ ...RAW_INVOICE.items[0], quantity: null }] } });
+    await expect(stub.invoke('wave_update_invoice', { invoiceId: '1', memo: 'x' })).rejects.toThrow(/quantity on line 1/);
+    answerGets(mock, { invoice: { ...RAW_INVOICE, items: [] } });
+    await expect(stub.invoke('wave_update_invoice', { invoiceId: '1', memo: 'x' })).rejects.toThrow(/line items/);
+    expect(mock.rest.patch).not.toHaveBeenCalled();
+  });
+
+  it('prefers the line\'s own booked account over the product default', async () => {
+    const { stub, mock } = setup();
+    answerGets(mock, { invoice: { ...RAW_INVOICE, items: [{ ...RAW_INVOICE.items[0], account_id: 777 }] } });
+    mock.rest.patch.mockResolvedValueOnce(RAW_INVOICE);
+    await stub.invoke('wave_update_invoice', { invoiceId: '1', memo: 'x' });
+    const items = (mock.rest.patch.mock.calls[0]![1] as Record<string, unknown>)['items'] as Array<Record<string, unknown>>;
+    expect(items[0]!['product']).toEqual({ id: 601, income_account: { id: 777 }, name: 'Design' });
   });
 });
 

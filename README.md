@@ -203,7 +203,7 @@ Nothing in this project reads a `.env` file. Set these in your shell, or in the 
 | `WAVE_MCP_BIND` / `WAVE_MCP_PORT` | Where the HTTP transport listens. Default `127.0.0.1:8765`. |
 | `WAVE_MCP_HTTP_TOKEN` | Bearer token HTTP clients must send. Required when `WAVE_MCP_BIND` is not a loopback address, because anyone who can reach the port can otherwise act in your Wave account. |
 
-With the HTTP transport, loopback listeners also refuse requests whose `Host` header isn't `localhost`, `127.0.0.1` or `[::1]`, which blocks DNS-rebinding attacks from web pages.
+With the HTTP transport, loopback listeners also refuse requests whose `Host` header names anything other than a loopback address (`localhost`, `127.x.x.x` or `::1`, on any port), which blocks DNS-rebinding attacks from web pages.
 
 ## Try it
 

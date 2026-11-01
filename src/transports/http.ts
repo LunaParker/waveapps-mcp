@@ -35,6 +35,18 @@ export function isLoopback(host: string): boolean {
   return h === 'localhost' || h === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
 }
 
+/** The host part of a Host header without the port; IPv6 keeps its brackets so isLoopback can read it. */
+export function hostnameOf(hostHeader: string): string {
+  const h = hostHeader.trim();
+  if (h.startsWith('[')) {
+    const end = h.indexOf(']');
+    return end === -1 ? h : h.slice(0, end + 1);
+  }
+  const colon = h.lastIndexOf(':');
+  // A bare IPv6 address has several colons; leave it whole.
+  return colon === -1 || h.indexOf(':') !== colon ? h : h.slice(0, colon);
+}
+
 export function isAuthorized(authorization: string | undefined, token: string | undefined): boolean {
   if (!token) return true;
   const match = /^Bearer\s+(.+)$/i.exec(authorization ?? '');
@@ -65,7 +77,7 @@ export async function startHttp(buildServer: () => McpServer, opts: HttpOptions 
   let listeningPort = opts.port;
 
   const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
-    handleRequest(req, res, buildServer, transports, opts, listeningPort).catch((err: unknown) => {
+    handleRequest(req, res, buildServer, transports, opts).catch((err: unknown) => {
       log.error('http request failed', { err: String(err) });
       if (!res.headersSent) reply(res, 500, -32603, 'Internal server error');
     });
@@ -87,14 +99,13 @@ async function handleRequest(
   buildServer: () => McpServer,
   transports: Map<string, StreamableHTTPServerTransport>,
   opts: HttpOptions,
-  port: number,
 ): Promise<void> {
   if (!isAuthorized(req.headers.authorization, opts.token)) {
     reply(res, 401, -32001, 'Unauthorized: send the WAVE_MCP_HTTP_TOKEN as a bearer token');
     return;
   }
   // A web page can reach a loopback listener through DNS rebinding; its Host header gives it away.
-  if (isLoopback(opts.bind) && !loopbackHosts(port).includes(req.headers.host ?? '')) {
+  if (isLoopback(opts.bind) && !isLoopback(hostnameOf(req.headers.host ?? ''))) {
     reply(res, 403, -32000, 'Forbidden: Host header is not a loopback address');
     return;
   }
@@ -111,7 +122,6 @@ async function handleRequest(
       body = await readJsonBody(req);
     } catch (err) {
       if (err instanceof BodyTooLargeError) {
-        res.setHeader('connection', 'close');
         reply(res, 413, -32600, `Request body exceeds ${MAX_BODY_BYTES} bytes`);
       } else {
         reply(res, 400, -32700, 'Parse error: request body is not valid JSON');
@@ -144,19 +154,26 @@ async function handleRequest(
   await transport.handleRequest(req, res, body);
 }
 
-function loopbackHosts(port: number): string[] {
-  return ['localhost', '127.0.0.1', '[::1]'].flatMap((h) => [h, `${h}:${port}`]);
-}
+const DRAIN_LIMIT_BYTES = 8 * MAX_BODY_BYTES;
 
 async function readJsonBody(req: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<unknown> {
   const chunks: Buffer[] = [];
   let total = 0;
+  let tooLarge = false;
   for await (const chunk of req) {
-    const buf = chunk as Buffer;
-    total += buf.length;
-    if (total > maxBytes) throw new BodyTooLargeError();
-    chunks.push(buf);
+    total += (chunk as Buffer).length;
+    if (total > maxBytes) {
+      // Keep reading so the client sees the 413 instead of a reset, up to a hard cap.
+      tooLarge = true;
+      if (total > DRAIN_LIMIT_BYTES) {
+        req.destroy();
+        break;
+      }
+      continue;
+    }
+    chunks.push(chunk as Buffer);
   }
+  if (tooLarge) throw new BodyTooLargeError();
   if (total === 0) return undefined;
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }

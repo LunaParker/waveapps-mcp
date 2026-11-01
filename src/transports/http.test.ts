@@ -2,7 +2,7 @@ import { request as httpRequest } from 'node:http';
 import type { Server } from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { httpOptionsFromEnv, isAuthorized, isLoopback, startHttp } from './http.js';
+import { hostnameOf, httpOptionsFromEnv, isAuthorized, isLoopback, startHttp } from './http.js';
 
 const INITIALIZE = JSON.stringify({
   jsonrpc: '2.0',
@@ -19,6 +19,17 @@ describe('isLoopback', () => {
 
   it('rejects everything else', () => {
     for (const h of ['0.0.0.0', '192.168.1.10', '10.0.0.1', 'example.com', '::', '']) expect(isLoopback(h)).toBe(false);
+  });
+});
+
+describe('hostnameOf', () => {
+  it('strips the port and keeps IPv6 brackets', () => {
+    expect(hostnameOf('localhost:9000')).toBe('localhost');
+    expect(hostnameOf('127.0.0.1')).toBe('127.0.0.1');
+    expect(hostnameOf('[::1]:8765')).toBe('[::1]');
+    expect(hostnameOf('[::1]')).toBe('[::1]');
+    expect(hostnameOf('evil.example:80')).toBe('evil.example');
+    expect(hostnameOf('')).toBe('');
   });
 });
 
@@ -117,5 +128,31 @@ describe('startHttp', () => {
       req.end(INITIALIZE);
     });
     expect(status).toBe(403);
+  });
+
+  it('accepts a loopback Host on another port and in another case (tunnels, proxies)', async () => {
+    for (const host of ['localhost:9000', `LOCALHOST:${port}`, `[::1]:${port}`]) {
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = httpRequest(
+          { host: '127.0.0.1', port, path: '/mcp', method: 'POST', headers: { ...HEADERS, authorization: 'Bearer EXAMPLE_TOKEN_value', host } },
+          (res) => {
+            res.resume();
+            resolve(res.statusCode ?? 0);
+          },
+        );
+        req.on('error', reject);
+        req.end(INITIALIZE);
+      });
+      expect(status, host).toBe(200);
+    }
+  });
+
+  it('always delivers the 413, even when the client is still sending', async () => {
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'initialize', params: { pad: 'x'.repeat(2 * 1024 * 1024) } });
+    for (let i = 0; i < 5; i += 1) {
+      const res = await fetch(base, { method: 'POST', headers: { ...HEADERS, authorization: 'Bearer EXAMPLE_TOKEN_value' }, body });
+      expect(res.status).toBe(413);
+      await res.body?.cancel();
+    }
   });
 });

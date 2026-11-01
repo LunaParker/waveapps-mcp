@@ -51,6 +51,15 @@ describe('registerProductTools', () => {
       const args = mock.rest.getPaged.mock.calls[0]![1] as Record<string, unknown>;
       expect(args['active']).toBeUndefined();
     });
+
+    it('returns an empty list when Wave sends something that is not an array', async () => {
+      const stub = createStubServer();
+      const mock = createMockClient();
+      mock.rest.getPaged.mockResolvedValueOnce({ items: { detail: 'odd' }, meta: { page: 1, pageSize: 50, totalCount: 0, totalPages: 0 } });
+      registerProductTools(stub.server as never, mock.client);
+      const out = (await stub.parsed('wave_list_products', {})) as { items: unknown[] };
+      expect(out.items).toEqual([]);
+    });
   });
 
   describe('wave_get_product', () => {

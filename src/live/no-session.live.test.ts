@@ -106,6 +106,7 @@ const CALLS: Record<string, Record<string, unknown>> = {
   wave_update_estimate: {
     estimateGlobalId: RELAY_ID,
     customerId: 1,
+    currency: 'CAD',
     items: [ESTIMATE_ITEM],
     estimateNumber: '1',
     estimateDate: '2026-01-01',

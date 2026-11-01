@@ -31,6 +31,7 @@ const UPDATE_ARGS = {
   estimateNumber: '12',
   estimateDate: '2026-05-11',
   dueDate: '2026-06-10',
+  currency: 'CAD',
 };
 
 const RAW_ESTIMATE = (id: string, number: string, status: string) => ({
@@ -114,19 +115,23 @@ describe('registerEstimateTools', () => {
     expect(input.items[0].taxes).toEqual([]);
   });
 
-  it('wave_create_estimate takes the next number, the business currency and a 30-day validity when omitted', async () => {
+  it('wave_create_estimate takes the next free number, the business currency and a 30-day validity when omitted', async () => {
     const stub = createStubServer();
     const mock = createMockClient();
-    mock.gql.execute.mockResolvedValueOnce(estimatesResponse([RAW_ESTIMATE('e1', '9', 'SENT'), RAW_ESTIMATE('e2', '12', 'DRAFT'), RAW_ESTIMATE('e3', 'Q-7', 'DRAFT')]));
-    mock.gql.execute.mockResolvedValueOnce({ estimateCreate: { didSucceed: true, estimate: { id: 'x', estimateNumber: '13' } } });
+    mock.gql.execute
+      .mockResolvedValueOnce(estimatesResponse([RAW_ESTIMATE('e1', '9', 'SENT'), RAW_ESTIMATE('e2', '12', 'DRAFT'), RAW_ESTIMATE('e3', 'Q-7', 'DRAFT')]))
+      .mockResolvedValueOnce(estimatesResponse([]))
+      .mockResolvedValueOnce({ estimateCreate: { didSucceed: true, estimate: { id: 'x', estimateNumber: '13' } } });
     mock.rest.get.mockResolvedValueOnce({ id: BUSINESS_UUID, primary_currency: { code: 'NZD' } });
     registerEstimateTools(stub.server as never, mock.client);
     const out = await stub.parsed('wave_create_estimate', { customerId: 1, items: [ITEM] });
-    const listCall = mock.gql.execute.mock.calls[0]![0];
+    const [listCall, checkCall, createCall] = mock.gql.execute.mock.calls.map((c) => c[0]);
     expect(listCall.operationName).toBe('GetEstimates');
     expect(listCall.variables).toMatchObject({ sort: 'ESTIMATE_NUMBER_DESC', page: 1, pageSize: 50 });
+    expect(checkCall.operationName).toBe('GetEstimates');
+    expect(checkCall.variables).toMatchObject({ estimateNumber: '13' });
     expect(mock.rest.get).toHaveBeenCalledWith(`/businesses/${BUSINESS_UUID}/`);
-    const input = mock.gql.execute.mock.calls[1]![0].variables.input;
+    const input = createCall.variables.input;
     expect(input.estimateNumber).toBe('13');
     expect(input.currency).toBe('NZD');
     expect(input.estimateDate).toBe(todayIso());
@@ -134,6 +139,35 @@ describe('registerEstimateTools', () => {
     expect(input.title).toBe('Estimate');
     expect(input.itemTitle).toBe('Services');
     expect(out).toEqual({ estimate: { id: 'x', estimateNumber: '13' } });
+  });
+
+  it('wave_create_estimate skips numbers that already exist when Wave sorts them as text', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    // Text sort puts "99" first even though "100" exists further down the roster.
+    mock.gql.execute
+      .mockResolvedValueOnce(estimatesResponse([RAW_ESTIMATE('e1', '99', 'SENT'), RAW_ESTIMATE('e2', '98', 'SENT')]))
+      .mockResolvedValueOnce(estimatesResponse([RAW_ESTIMATE('e9', '100', 'DRAFT')]))
+      .mockResolvedValueOnce(estimatesResponse([RAW_ESTIMATE('e10', '1010', 'DRAFT')]))
+      .mockResolvedValueOnce({ estimateCreate: { didSucceed: true, estimate: { id: 'x', estimateNumber: '101' } } });
+    registerEstimateTools(stub.server as never, mock.client);
+    await stub.invoke('wave_create_estimate', { customerId: 1, items: [ITEM], currency: 'CAD' });
+    const calls = mock.gql.execute.mock.calls.map((c) => c[0]);
+    expect(calls[1]!.variables.estimateNumber).toBe('100');
+    expect(calls[2]!.variables.estimateNumber).toBe('101');
+    expect(calls[3]!.variables.input.estimateNumber).toBe('101');
+  });
+
+  it('wave_create_estimate keeps zero padding', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    mock.gql.execute
+      .mockResolvedValueOnce(estimatesResponse([RAW_ESTIMATE('e1', '0012', 'SENT')]))
+      .mockResolvedValueOnce(estimatesResponse([]))
+      .mockResolvedValueOnce({ estimateCreate: { didSucceed: true, estimate: { id: 'x', estimateNumber: '0013' } } });
+    registerEstimateTools(stub.server as never, mock.client);
+    await stub.invoke('wave_create_estimate', { customerId: 1, items: [ITEM], currency: 'CAD' });
+    expect(mock.gql.execute.mock.calls[2]![0].variables.input.estimateNumber).toBe('0013');
   });
 
   it('wave_create_estimate starts at 1 when there are no estimates and skips the reads when the caller supplies number and currency', async () => {
@@ -182,9 +216,10 @@ describe('registerEstimateTools', () => {
     expect(mock.gql.execute.mock.calls[0]![0].query).toBe(CREATE_ESTIMATE_MUTATION);
   });
 
-  it('wave_update_estimate sends PatchEstimate with the supplied global id', async () => {
+  it('wave_update_estimate sends PatchEstimate with the supplied global id and the business currency', async () => {
     const stub = createStubServer();
     const mock = createMockClient();
+    mock.rest.get.mockResolvedValueOnce({ primary_currency: { code: 'USD' } });
     mock.gql.execute.mockResolvedValueOnce({ estimatePatch: { didSucceed: true } });
     registerEstimateTools(stub.server as never, mock.client);
     const out = await stub.parsed('wave_update_estimate', {
@@ -199,6 +234,7 @@ describe('registerEstimateTools', () => {
     expect(call.query).toBe(PATCH_ESTIMATE_MUTATION);
     expect(call.variables.input.id).toBe('EST_REL');
     expect(call.variables.input.status).toBe('DRAFT');
+    expect(call.variables.input.currency).toBe('USD');
     expect(call.variables.input.depositStatus).toBe('DISABLED');
     expect(call.variables.input.disableCreditCardPayments).toBe(true);
     expect(out).toEqual({ ok: true, estimateGlobalId: 'EST_REL' });

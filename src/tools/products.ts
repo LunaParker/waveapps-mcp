@@ -30,7 +30,7 @@ export function registerProductTools(server: McpServer, client: WaveClient): voi
         sort,
         active: activeOnly ? true : undefined,
       });
-      return jsonResult({ items: paged.items.map(shapeProduct), meta: paged.meta });
+      return jsonResult({ items: (Array.isArray(paged.items) ? paged.items : []).map(shapeProduct), meta: paged.meta });
     },
   );
 

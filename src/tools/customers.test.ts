@@ -55,16 +55,37 @@ describe('registerCustomerTools', () => {
     expect(out.pageInfo).toEqual({ currentPage: 1, totalPages: 1 });
   });
 
-  it('wave_list_customers search fetches one big page and filters by name or email, case-insensitively', async () => {
+  it('wave_list_customers search walks every page and filters by name or email, case-insensitively', async () => {
     const stub = createStubServer();
     const mock = createMockClient();
-    mock.gql.execute.mockResolvedValueOnce(
-      listResponse([RAW_CUSTOMER('c1', 'Acme Corp', 'ap@acme.example'), RAW_CUSTOMER('c2', 'Beta LLC', 'hello@beta.example'), RAW_CUSTOMER('c3', 'Gamma', 'acme-fan@gamma.example')]),
-    );
+    mock.gql.execute
+      .mockResolvedValueOnce(listResponse([RAW_CUSTOMER('c1', 'Acme Corp', 'ap@acme.example'), RAW_CUSTOMER('c2', 'Beta LLC', 'hello@beta.example')], { currentPage: 1, totalPages: 2 }))
+      .mockResolvedValueOnce(listResponse([RAW_CUSTOMER('c3', 'Gamma', 'acme-fan@gamma.example')], { currentPage: 2, totalPages: 2 }));
     registerCustomerTools(stub.server as never, mock.client);
-    const out = (await stub.parsed('wave_list_customers', { search: 'ACME', page: 3, pageSize: 10 })) as { customers: Array<{ id: string }> };
-    expect(mock.gql.execute.mock.calls[0]![0].variables).toEqual({ businessId: BUSINESS_GLOBAL_ID, page: 1, pageSize: 500 });
+    const out = (await stub.parsed('wave_list_customers', { search: 'ACME', page: 3, pageSize: 10 })) as {
+      customers: Array<{ id: string }>; pageInfo: unknown; matched: number; searchedAllPages: boolean;
+    };
+    expect(mock.gql.execute.mock.calls.map((c) => c[0].variables)).toEqual([
+      { businessId: BUSINESS_GLOBAL_ID, page: 1, pageSize: 500 },
+      { businessId: BUSINESS_GLOBAL_ID, page: 2, pageSize: 500 },
+    ]);
     expect(out.customers.map((c) => c.id)).toEqual(['c1', 'c3']);
+    expect(out.matched).toBe(2);
+    expect(out.searchedAllPages).toBe(true);
+    expect(out.pageInfo).toEqual({ currentPage: 1, totalPages: 2 });
+  });
+
+  it('wave_list_customers search stops after ten pages and says so', async () => {
+    const stub = createStubServer();
+    const mock = createMockClient();
+    for (let page = 1; page <= 10; page += 1) {
+      mock.gql.execute.mockResolvedValueOnce(listResponse([], { currentPage: page, totalPages: 12 }));
+    }
+    registerCustomerTools(stub.server as never, mock.client);
+    const out = (await stub.parsed('wave_list_customers', { search: 'nobody' })) as { customers: unknown[]; searchedAllPages: boolean };
+    expect(mock.gql.execute).toHaveBeenCalledTimes(10);
+    expect(out.customers).toEqual([]);
+    expect(out.searchedAllPages).toBe(false);
   });
 
   it('wave_create_customer builds the canonical input shape and returns the trimmed customer', async () => {
