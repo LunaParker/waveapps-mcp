@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   configDir,
   credentialsAgeSeconds,
@@ -10,6 +10,7 @@ import {
   migrateLegacySecrets,
   patchCredentials,
   readCredentials,
+  signInEmail,
   writeCredentials,
 } from './credentials.js';
 import { fileSecretStore, memorySecretStore } from './secrets.js';
@@ -230,5 +231,21 @@ describe('credentialsAgeSeconds', () => {
 
   it('returns null when the file is missing', () => {
     expect(credentialsAgeSeconds()).toBeNull();
+  });
+});
+
+describe('signInEmail', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('prefers WAVE_EMAIL over the stored email', () => {
+    writeCredentials({ authToken: 'TEST_token', csrfToken: undefined, businessId: undefined, email: 'stored@example.com' });
+    vi.stubEnv('WAVE_EMAIL', 'env@example.com');
+    expect(signInEmail()).toBe('env@example.com');
+  });
+
+  it('falls back to the stored email, then to nothing', () => {
+    expect(signInEmail()).toBeUndefined();
+    writeCredentials({ authToken: 'TEST_token', csrfToken: undefined, businessId: undefined, email: 'stored@example.com' });
+    expect(signInEmail()).toBe('stored@example.com');
   });
 });
