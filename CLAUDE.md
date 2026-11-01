@@ -19,6 +19,7 @@ npm run test:coverage
 npm run test:live                  # live contract checks, no session needed
 npm run test:live:signed-in        # plus read-only checks with the stored session
 npx playwright install chromium    # once, before login or refresh
+cd gateway && uv sync --locked && uv run pytest   # the FastMCP gateway (Python 3.12+, uv)
 ```
 
 - Node 20.18 or later. CI (`.github/workflows/test.yml`) runs `npm ci --ignore-scripts`, typecheck and tests on Node 20 and 22. `build.yml` compiles and uploads `dist` after Test passes on `main`.
@@ -40,6 +41,7 @@ npx playwright install chromium    # once, before login or refresh
 - `src/tools/`: one file per area (`businesses`, `invoices`, `payments`, `accounts`, `customers`, `estimates`, `products`, `bills`, `receipts`), all registered in `tools/index.ts`. GraphQL documents live in `_queries.ts` and `_mutations.ts`; `_invoice-body.ts` builds the REST invoice body and maps a stored invoice back into update arguments; `_shape.ts` holds the output shapers that trim Wave's records before a tool returns them (pure functions, `null` for a missing scalar, `[]` for a missing list; invoice settings pass through as Wave sends them, and `wave_list_invoices` and `wave_get_invoice` take `raw: true` to skip the shapers); `_test_utils.ts` holds the mocked client the tool tests use.
 - `src/auth/`: the credentials file, the OS credential store, Playwright launch, the Auth0 sign-in, the profile lock and TOTP.
 - `src/cli/`: the subcommands, plus `sanitise.ts` (trim pasted values and strip one pair of surrounding quotes) and `secret-line.ts` (hidden input collected as bytes and decoded as UTF-8 once, so non-ASCII passwords survive). `src/transports/`: stdio and HTTP. `src/util/`: `dates.ts` (`todayIso` for the local calendar day, never `new Date().toISOString().slice(0, 10)`, which gives the UTC day; `addDays` for day arithmetic on YYYY-MM-DD strings), `log.ts`, `env.ts`, `cli-command.ts`.
+- `gateway/`: the FastMCP OAuth gateway (Python, uv, `fastmcp==4.1.1`). `config.py` reads the environment into `GatewayConfig` (secrets only from `_FILE` paths, all problems reported together); `gate.py` holds `GoogleProvider`, the encrypted on-disk OAuth store and the `EmailAllowlist` middleware; `app.py` builds the proxy. Tests use FastMCP's in-process `asgi_server` and `asgi_client`, plus a real-port stub upstream from `run_server_async`; build a fresh stub per test, because one FastMCP instance can't serve twice in a process. `[tool.uv] exclude-newer` keeps the lock to releases at least two weeks old; move it together with the fastmcp pin. CI runs it on Python 3.12 and 3.14, and the root `pyrightconfig.json` points editors at `gateway/.venv`.
 - `scripts/`: the pre-commit secret scan, its installer and `smoke.ts`.
 - `docs/` and `NOTES.md` are local-only and gitignored on purpose: they hold captured internal GraphQL queries, real IDs and working notes. Read them when present. Never commit them, and never copy captured queries or IDs from them into tracked files.
 
@@ -77,6 +79,7 @@ This is the fragile part, and Wave changes it without notice.
 
 - The config dir is `~/.config/waveapps-mcp/`, overridable with `WAVE_MCP_CONFIG_DIR`. It holds `credentials.json` (token, CSRF token, business ID and email, mode `0600`), `chromium-profile/` and `sign-in.lock`.
 - The password and TOTP secret live in the OS credential store through `@napi-rs/keyring`, under service `waveapps-mcp` with accounts `password` and `totp-secret`. Older versions kept them in `credentials.json`; `migrateLegacySecrets()` moves them over on first run.
+- `WAVE_PASSWORD_FILE` and `WAVE_TOTP_SECRET_FILE` switch `secretStore()` to `fileSecretStore()`, a read-only store for hosts with no keychain. It reads the files on every `get`, its `set` and `delete` throw, `save-password` then records only the email, `logout` leaves the files alone, and `migrateLegacySecrets()` skips it. `WAVE_MCP_HTTP_TOKEN_FILE` is the file form of `WAVE_MCP_HTTP_TOKEN`; setting both is an error.
 - Environment variables: `WAVE_AUTH_TOKEN`, `WAVE_CSRF_TOKEN` and `WAVE_BUSINESS_ID` override the stored values. `WAVE_MCP_BROWSER_PATH` points at another Chromium. `WAVE_MCP_LOG_LEVEL` sets log verbosity. `WAVE_MCP_TRANSPORT` picks stdio or HTTP; `WAVE_MCP_BIND`, `WAVE_MCP_PORT` and `WAVE_MCP_HTTP_TOKEN` configure HTTP.
 - Nothing loads `.env`, and no example env file ships: the README's Configuration table documents the variables, which only take effect when the shell or the MCP client config sets them.
 
@@ -88,6 +91,7 @@ This is the fragile part, and Wave changes it without notice.
 - Tests must never touch the real credential store or config dir. `src/test-setup.ts` installs an in-memory secret store and a temp `WAVE_MCP_CONFIG_DIR` before every test. Pass `memorySecretStore()` or a `deps` object rather than mocking modules.
 - Fake secrets in tests and docs start with `EXAMPLE_`, `FAKE_`, `TEST_` or `PLACEHOLDER_`; anything else that looks like a token makes the pre-commit scan reject the commit. Run it by hand with `npm run check-secrets`. The hook lives in the main checkout's `.git/hooks`, and worktrees share it, so run `npm install` in the main checkout at least once.
 - Pin new dependencies to releases at least two weeks old.
+- FastMCP proxies forward the caller's `Authorization` header (the gateway's own token) to the upstream unless the transport sets one. `upstream_transport()` in `gateway/src/waveapps_gateway/app.py` sets `Authorization: Bearer <token>`, which wins in FastMCP 4.1. `test_the_upstream_sees_the_gateway_token_not_the_callers` guards it; when upgrading FastMCP, run the gateway suite first.
 
 ## Code conventions
 
