@@ -43,7 +43,44 @@ Once it's installed, you can ask Claude to:
 - Record, look up, edit or delete bank and cash transactions (money in or out, categorised to an income or expense account), and create tags to label them
 - Draft, edit, approve, send, mark as sent or accepted, duplicate, or delete an estimate, turn one into an invoice, and fetch its PDF as a file
 
-Everything happens in your real Wave account. Claude doesn't have its own sandbox. Be deliberate with mutating operations, especially deletes and "send invoice".
+Everything happens in your real Wave account. Claude doesn't have its own sandbox. Be deliberate with mutating operations, especially deletes and "send invoice", or switch them off entirely with [read-only mode](#read-only-mode).
+
+## Read-only mode
+
+Not everyone wants an AI assistant that can send invoices or delete customers. Start the server with `WAVE_MCP_READ_ONLY=1` and Claude gets only the 24 tools that read: lists, lookups, reports, report exports and PDFs. The 34 tools that create, change, send or delete are never registered, so they don't appear in the client's tool list and nothing can call them. That holds however Claude is prompted, including by text it reads along the way: a customer note or a pasted email can't talk it into sending an invoice when there's no tool to send one with.
+
+In Claude Desktop, add an `env` block to the `waveapps` entry:
+
+```json
+{
+  "mcpServers": {
+    "waveapps": {
+      "command": "node",
+      "args": ["/absolute/path/to/waveapps-mcp/dist/server.js"],
+      "env": { "WAVE_MCP_READ_ONLY": "1" }
+    }
+  }
+}
+```
+
+In Claude Code:
+
+```bash
+claude mcp add waveapps -e WAVE_MCP_READ_ONLY=1 -- node /absolute/path/to/waveapps-mcp/dist/server.js
+```
+
+Behind the [claude.ai gateway](#using-it-from-claudeai), set it on the server process, not the gateway.
+
+It's built to fail safe:
+
+- **Unclear means stop.** `1` or `true` turns it on and `0`, `false` or unset leaves it off. Anything else, such as `yes`, stops the server at startup rather than guessing and leaving writes on.
+- **New tools are hidden until they say otherwise.** The server keeps only tools that declare `readOnlyHint: true`, the standard MCP annotation for a tool that changes nothing. A tool that doesn't declare it stays out.
+- **A test pins the list.** The 24 read-only tool names are spelled out in `src/tools/index.test.ts`, so a write tool mislabelled as read-only fails CI instead of reaching read-only users.
+
+What it doesn't change:
+
+- **Claude still sees your books.** Customer names, emails and addresses, invoice amounts and reports are all readable. Only connect clients you'd trust with that.
+- **The session still has full rights.** Wave has no read-only API keys, so the token the server holds can do anything you can do in Wave. Read-only mode keeps the write tools out of the client's reach; it doesn't make `credentials.json` any less sensitive, and automatic sign-in still uses your stored password.
 
 ## Before you start
 
@@ -206,7 +243,7 @@ Nothing in this project reads a `.env` file. Set these in your shell, or in the 
 | `WAVE_EMAIL` | The Wave email automatic sign-in uses, instead of the one in `credentials.json`. Handy on a server or in a container, where nobody is there to type it. |
 | `WAVE_MCP_CONFIG_DIR` | Where `credentials.json` and the sign-in browser profile live. Default `~/.config/waveapps-mcp`. |
 | `WAVE_MCP_BROWSER_PATH` | A Chromium-based browser to use for sign-in instead of Playwright's. |
-| `WAVE_MCP_READ_ONLY` | `1` or `true` registers only the 24 tools that read (lists, lookups, reports and PDFs), so a client can't create, change, send or delete anything through this server. `0`, `false` or unset gives all 58. Any other value stops the server at startup. |
+| `WAVE_MCP_READ_ONLY` | `1` or `true` registers only the 24 tools that read (lists, lookups, reports and PDFs), so a client can't create, change, send or delete anything through this server. `0`, `false` or unset gives all 58. Any other value stops the server at startup. See [Read-only mode](#read-only-mode). |
 | `WAVE_MCP_LOG_LEVEL` | `debug`, `info` (default), `warn` or `error`. Logs go to stderr. |
 | `WAVE_LIVE_SIGNED_IN` / `WAVE_LIVE_WRITES` / `WAVE_LIVE_TEST_CUSTOMER_ID` | Development only, for the live contract tests: `1` turns on the signed-in read checks or the real write checks (`npm run test:live:signed-in` and `npm run test:live:writes` set them for you), and the customer id names the throwaway test customer the write checks may create, change, email and delete records for. |
 | `WAVE_MCP_TRANSPORT` | `stdio` (default) or `http`. |
@@ -309,8 +346,7 @@ Claude will figure out which tools to call. If it doesn't have enough info (e.g.
 
 - **This uses Wave's internal API, not a public/documented one.** Wave doesn't promise to keep its internal endpoints stable. If something breaks one day, it's probably because Wave changed something on their end. Open an issue and we'll patch it.
 - **Treat your credentials file as a password.** Anyone with read access to `~/.config/waveapps-mcp/credentials.json` can act as you in Wave until the session expires. Don't commit it to git, don't paste it into shared chats, don't sync it to a public folder.
-- **Be careful with destructive tools.** `wave_delete_invoice`, `wave_delete_customer`, `wave_send_invoice` etc. take real action against your live workspace. Claude usually confirms before destructive operations, but double-check what it's about to do. If you only want Claude to look, set `WAVE_MCP_READ_ONLY=1`.
-- **Read-only mode limits the tools, not the session.** Wave has no read-only tokens, so the stored session can still do anything you can in Wave. `WAVE_MCP_READ_ONLY` keeps the write tools out of the client's reach; it doesn't make `credentials.json` any less sensitive, and automatic sign-in still uses your stored password.
+- **Be careful with destructive tools.** `wave_delete_invoice`, `wave_delete_customer`, `wave_send_invoice` etc. take real action against your live workspace. Claude usually confirms before destructive operations, but double-check what it's about to do. If you only want Claude to look, use [read-only mode](#read-only-mode).
 - **Some areas are read-only.** Claude can list bills, receipts, recurring invoices and sales taxes but can't create or change them, and there are no vendor tools yet. Add a vendor, enter or pay a bill, upload a receipt or set up a recurring invoice on Wave's website.
 
 ## License
