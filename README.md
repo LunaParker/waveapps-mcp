@@ -225,7 +225,7 @@ Claude's apps call remote connectors from Anthropic's servers, so a connector ha
 Claude --HTTPS--> your public URL --> gateway (127.0.0.1:8000) --token--> waveapps-mcp (127.0.0.1:8765) --> Wave
 ```
 
-The gateway only listens on loopback. Giving it a public HTTPS address (Tailscale Funnel, a Cloudflare Tunnel or a reverse proxy) is up to you.
+The gateway only listens on loopback. Giving it a public HTTPS address (Tailscale Funnel, a Cloudflare Tunnel or a reverse proxy) is up to you. With Funnel, use port 443: in testing, claude.ai couldn't reach a Funnel on port 8443, so Funnel gives you one claude.ai connector per machine.
 
 1. **Create the secret files**, readable only by you:
 
@@ -260,9 +260,11 @@ The gateway only listens on loopback. Giving it a public HTTPS address (Tailscal
    uv run waveapps-mcp-gateway
    ```
 
-5. **Add the connector.** In claude.ai, open Settings, then Connectors, and add a custom connector with the URL `https://<your public URL>/mcp`. Leave the advanced OAuth fields empty, then sign in with a listed Google account.
+5. **Add the connector.** In claude.ai, open Customize, then Connectors, and add a custom connector with the URL `https://<your public URL>/mcp`. claude.ai finds the gateway's sign-in by itself, so leave its OAuth options as they are, then sign in with a listed Google account.
 
 A healthy gateway answers `/mcp` with 401 (it wants a sign-in) and `/.well-known/oauth-authorization-server` with 200.
+
+To move the gateway to a new public URL, change `BASE_URL`, add the new `/auth/callback` address to the Google client and restart the gateway. Every sign-in is tied to the old URL and claude.ai can't edit a connector's URL, so remove the connector and add it again. Its tool permissions start over.
 
 | Gateway variable | Default | What it does |
 | --- | --- | --- |
@@ -309,7 +311,7 @@ Claude will figure out which tools to call. If it doesn't have enough info (e.g.
 - **Treat your credentials file as a password.** Anyone with read access to `~/.config/waveapps-mcp/credentials.json` can act as you in Wave until the session expires. Don't commit it to git, don't paste it into shared chats, don't sync it to a public folder.
 - **Be careful with destructive tools.** `wave_delete_invoice`, `wave_delete_customer`, `wave_send_invoice` etc. take real action against your live workspace. Claude usually confirms before destructive operations, but double-check what it's about to do. If you only want Claude to look, set `WAVE_MCP_READ_ONLY=1`.
 - **Read-only mode limits the tools, not the session.** Wave has no read-only tokens, so the stored session can still do anything you can in Wave. `WAVE_MCP_READ_ONLY` keeps the write tools out of the client's reach; it doesn't make `credentials.json` any less sensitive, and automatic sign-in still uses your stored password.
-- **Vendors aren't wrapped yet.** They live on Wave's older `accounting.waveapps.com` frontend. If you need to bill a new vendor on a Wave Bill, you'll have to add them through Wave's website first.
+- **Some areas are read-only.** Claude can list bills, receipts, recurring invoices and sales taxes but can't create or change them, and there are no vendor tools yet. Add a vendor, enter or pay a bill, upload a receipt or set up a recurring invoice on Wave's website.
 
 ## License
 
@@ -323,6 +325,7 @@ Brief pointers if you want to hack on this:
 
 - Source layout, API map, and captured GraphQL operations live in `docs/` locally, gitignored on purpose so the reverse-engineering reference doesn't get committed to a public mirror.
 - Run the test suite: `npm test` (or `npm run test:coverage` for an HTML coverage report in `coverage/`). It's fully mocked and never touches Wave.
+- Test the gateway: `cd gateway && uv sync --locked && uv run pytest`. It runs against a stub server and never touches Wave or Google.
 - Tool results go through the shapers in `src/tools/_shape.ts`, pure functions that keep the fields the model needs, cut nested accounts and sales taxes down to a few fields, and drop Wave's resource URLs and layout flags. Add a field there, with a test, rather than returning a raw payload.
 - Check the tools still match Wave's undocumented API: `npm run test:live`. No session needed: every tool runs with a bogus token, so Wave rejects it at auth, but only after confirming the REST route exists and the GraphQL query, input fields and enum values still fit its schema.
 - Add read-only checks against your own account with `npm run test:live:signed-in` (or set `WAVE_LIVE_SIGNED_IN=1`). Uses your stored session and never signs in for you; if it has expired, the run stops with one "sign in again" error.
@@ -330,4 +333,4 @@ Brief pointers if you want to hack on this:
 - Smoke-test against a live Wave account: `WAVE_AUTH_TOKEN=... npm run smoke`
 - Sign-in lives in `src/auth/`: `playwright.ts` launches Chromium in a form Cloudflare accepts (full browser, not the headless shell, without `HeadlessChrome` in the user agent), `auth0-sign-in.ts` walks Wave's Auth0 pages, `secrets.ts` wraps the OS credential store. Tests swap in an in-memory store (`src/test-setup.ts`), so they never touch your real Keychain.
 
-Pull requests welcome, especially for Products & Services, Vendors, recurring invoices, and bill mutations, which are the main unwrapped surfaces.
+Pull requests welcome, especially for vendors, bills (create, edit, pay, delete) and receipt uploads, which are the main unwrapped surfaces. Recurring invoices and sales taxes stay read-only on purpose: Wave can end a recurring invoice or archive a tax but never delete either, so a create tool would leave permanent records behind on every live test run.
