@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { registerAllTools } from './index.js';
+import { readOnlyView, registerAllTools } from './index.js';
 import { createMockClient, createStubServer } from './_test_utils.js';
 
 describe('registerAllTools', () => {
@@ -69,6 +69,49 @@ describe('registerAllTools', () => {
       'wave_update_transaction',
     ]);
     expect(names).toHaveLength(58);
+  });
+
+  it('registers only the tools that read, in read-only mode', () => {
+    const stub = createStubServer();
+    registerAllTools(stub.server as never, createMockClient().client, { readOnly: true });
+    // Adding a name here exposes that tool to read-only users; check it changes nothing in Wave first.
+    expect([...stub.handlers.keys()].sort()).toEqual([
+      'wave_export_report',
+      'wave_get_business',
+      'wave_get_customer',
+      'wave_get_estimate',
+      'wave_get_estimate_pdf',
+      'wave_get_invoice',
+      'wave_get_invoice_pdf',
+      'wave_get_invoice_settings',
+      'wave_get_product',
+      'wave_get_recurring_invoice',
+      'wave_get_report',
+      'wave_get_transaction',
+      'wave_list_accounts',
+      'wave_list_bills',
+      'wave_list_businesses',
+      'wave_list_customers',
+      'wave_list_estimates',
+      'wave_list_invoices',
+      'wave_list_products',
+      'wave_list_receipts',
+      'wave_list_recurring_invoices',
+      'wave_list_sales_taxes',
+      'wave_list_tags',
+      'wave_list_transactions',
+    ]);
+  });
+
+  it('hides a tool in read-only mode unless it declares readOnlyHint: true', () => {
+    const stub = createStubServer();
+    const view = readOnlyView(stub.server as never);
+    const handler = () => ({ content: [] });
+    view.registerTool('wave_no_annotations', {}, handler);
+    view.registerTool('wave_unset_hint', { annotations: { openWorldHint: true } }, handler);
+    view.registerTool('wave_writer', { annotations: { readOnlyHint: false } }, handler);
+    view.registerTool('wave_reader', { annotations: { readOnlyHint: true } }, handler);
+    expect([...stub.handlers.keys()]).toEqual(['wave_reader']);
   });
 
   it('marks every tool that emails someone as destructive, so clients ask before it runs', () => {

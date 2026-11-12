@@ -206,6 +206,7 @@ Nothing in this project reads a `.env` file. Set these in your shell, or in the 
 | `WAVE_EMAIL` | The Wave email automatic sign-in uses, instead of the one in `credentials.json`. Handy on a server or in a container, where nobody is there to type it. |
 | `WAVE_MCP_CONFIG_DIR` | Where `credentials.json` and the sign-in browser profile live. Default `~/.config/waveapps-mcp`. |
 | `WAVE_MCP_BROWSER_PATH` | A Chromium-based browser to use for sign-in instead of Playwright's. |
+| `WAVE_MCP_READ_ONLY` | `1` or `true` registers only the 24 tools that read (lists, lookups, reports and PDFs), so a client can't create, change, send or delete anything through this server. `0`, `false` or unset gives all 58. Any other value stops the server at startup. |
 | `WAVE_MCP_LOG_LEVEL` | `debug`, `info` (default), `warn` or `error`. Logs go to stderr. |
 | `WAVE_LIVE_SIGNED_IN` / `WAVE_LIVE_WRITES` / `WAVE_LIVE_TEST_CUSTOMER_ID` | Development only, for the live contract tests: `1` turns on the signed-in read checks or the real write checks (`npm run test:live:signed-in` and `npm run test:live:writes` set them for you), and the customer id names the throwaway test customer the write checks may create, change, email and delete records for. |
 | `WAVE_MCP_TRANSPORT` | `stdio` (default) or `http`. |
@@ -306,7 +307,8 @@ Claude will figure out which tools to call. If it doesn't have enough info (e.g.
 
 - **This uses Wave's internal API, not a public/documented one.** Wave doesn't promise to keep its internal endpoints stable. If something breaks one day, it's probably because Wave changed something on their end. Open an issue and we'll patch it.
 - **Treat your credentials file as a password.** Anyone with read access to `~/.config/waveapps-mcp/credentials.json` can act as you in Wave until the session expires. Don't commit it to git, don't paste it into shared chats, don't sync it to a public folder.
-- **Be careful with destructive tools.** `wave_delete_invoice`, `wave_delete_customer`, `wave_send_invoice` etc. take real action against your live workspace. Claude usually confirms before destructive operations, but double-check what it's about to do.
+- **Be careful with destructive tools.** `wave_delete_invoice`, `wave_delete_customer`, `wave_send_invoice` etc. take real action against your live workspace. Claude usually confirms before destructive operations, but double-check what it's about to do. If you only want Claude to look, set `WAVE_MCP_READ_ONLY=1`.
+- **Read-only mode limits the tools, not the session.** Wave has no read-only tokens, so the stored session can still do anything you can in Wave. `WAVE_MCP_READ_ONLY` keeps the write tools out of the client's reach; it doesn't make `credentials.json` any less sensitive, and automatic sign-in still uses your stored password.
 - **Vendors aren't wrapped yet.** They live on Wave's older `accounting.waveapps.com` frontend. If you need to bill a new vendor on a Wave Bill, you'll have to add them through Wave's website first.
 
 ## License
