@@ -47,7 +47,7 @@ Everything happens in your real Wave account. Claude doesn't have its own sandbo
 
 ## Read-only mode
 
-Start the server with `WAVE_MCP_READ_ONLY=1` and Claude gets only the 24 tools that read: lists, lookups, reports, report exports and PDFs. The 34 tools that mutate data (ie, creating, changing, sending or deleting) are never registered, so they don't appear in the client's tool list and Claude won't be able to call them. That holds however Claude is prompted, including by text it reads along the way: even if a customer note or a pasted email were to attempt prompt injection (although we try to mitigate this danger), the read-only flag is a deadlock that would prevent it from sending an invoice, given that there's no tool to send it with.
+Start the server with `WAVE_MCP_READ_ONLY=1` and Claude gets only the 24 tools that read: lists, lookups, reports, report exports and PDFs. The 34 tools that mutate data (ie, creating, changing, sending or deleting) are never registered, so they don't appear in the client's tool list and Claude won't be able to call them. That holds however Claude is prompted, including by text it reads along the way: even if a customer note or a pasted email were to attempt prompt injection (although we try to mitigate this danger), the read-only flag is a hard stop that would prevent it from sending an invoice, given that there's no tool to send it with.
 
 In Claude Desktop, add an `env` block to the `waveapps` entry:
 
@@ -70,6 +70,8 @@ claude mcp add waveapps -e WAVE_MCP_READ_ONLY=1 -- node /absolute/path/to/waveap
 ```
 
 Behind the [claude.ai gateway](#using-it-from-claudeai), set it on the server process, not the gateway.
+
+Read-only mode limits what Claude can change, not what it can see: customer names, emails and addresses, invoice amounts and reports are all still readable. It doesn't limit the session either. Wave has no read-only API keys, so the token in `credentials.json` can still do anything you can do in Wave; keep it as private as a password.
 
 ## Before you start
 
