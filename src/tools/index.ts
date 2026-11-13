@@ -18,7 +18,13 @@ import { registerTransactionTools } from './transactions.js';
 import { registerTagTools } from './tags.js';
 import { registerRecurringInvoiceTools } from './recurring-invoices.js';
 
-export function registerAllTools(server: McpServer, client: WaveClient): void {
+export interface RegisterOptions {
+  /** Register only the tools annotated `readOnlyHint: true` (WAVE_MCP_READ_ONLY). */
+  readOnly?: boolean;
+}
+
+export function registerAllTools(server: McpServer, client: WaveClient, opts: RegisterOptions = {}): void {
+  if (opts.readOnly) server = readOnlyView(server);
   registerBusinessTools(server, client);
   registerInvoiceTools(server, client);
   registerCustomerTools(server, client);
@@ -36,4 +42,13 @@ export function registerAllTools(server: McpServer, client: WaveClient): void {
   registerTransactionTools(server, client);
   registerTagTools(server, client);
   registerRecurringInvoiceTools(server, client);
+}
+
+/** `server` with a registerTool that drops every tool not annotated `readOnlyHint: true`. */
+export function readOnlyView(server: McpServer): McpServer {
+  const view = Object.create(server) as McpServer;
+  // Dropped tools return undefined; no register function uses the RegisteredTool it gets back.
+  view.registerTool = ((name, config, cb) =>
+    config.annotations?.readOnlyHint === true ? server.registerTool(name, config, cb) : undefined) as McpServer['registerTool'];
+  return view;
 }
