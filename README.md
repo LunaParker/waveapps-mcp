@@ -47,7 +47,7 @@ Everything happens in your real Wave account. Claude doesn't have its own sandbo
 
 ## Read-only mode
 
-Not everyone wants an AI assistant that can send invoices or delete customers. Start the server with `WAVE_MCP_READ_ONLY=1` and Claude gets only the 24 tools that read: lists, lookups, reports, report exports and PDFs. The 34 tools that create, change, send or delete are never registered, so they don't appear in the client's tool list and nothing can call them. That holds however Claude is prompted, including by text it reads along the way: a customer note or a pasted email can't talk it into sending an invoice when there's no tool to send one with.
+Start the server with `WAVE_MCP_READ_ONLY=1` and Claude gets only the 24 tools that read: lists, lookups, reports, report exports and PDFs. The 34 tools that mutate data (ie, creating, changing, sending or deleting) are never registered, so they don't appear in the client's tool list and Claude won't be able to call them. That holds however Claude is prompted, including by text it reads along the way: even if a customer note or a pasted email were to attempt prompt injection (although we try to mitigate this danger), the read-only flag is a deadlock that would prevent it from sending an invoice, given that there's no tool to send it with.
 
 In Claude Desktop, add an `env` block to the `waveapps` entry:
 
@@ -70,17 +70,6 @@ claude mcp add waveapps -e WAVE_MCP_READ_ONLY=1 -- node /absolute/path/to/waveap
 ```
 
 Behind the [claude.ai gateway](#using-it-from-claudeai), set it on the server process, not the gateway.
-
-It's built to fail safe:
-
-- **Unclear means stop.** `1` or `true` turns it on and `0`, `false` or unset leaves it off. Anything else, such as `yes`, stops the server at startup rather than guessing and leaving writes on.
-- **New tools are hidden until they say otherwise.** The server keeps only tools that declare `readOnlyHint: true`, the standard MCP annotation for a tool that changes nothing. A tool that doesn't declare it stays out.
-- **A test pins the list.** The 24 read-only tool names are spelled out in `src/tools/index.test.ts`, so a write tool mislabelled as read-only fails CI instead of reaching read-only users.
-
-What it doesn't change:
-
-- **Claude still sees your books.** Customer names, emails and addresses, invoice amounts and reports are all readable. Only connect clients you'd trust with that.
-- **The session still has full rights.** Wave has no read-only API keys, so the token the server holds can do anything you can do in Wave. Read-only mode keeps the write tools out of the client's reach; it doesn't make `credentials.json` any less sensitive, and automatic sign-in still uses your stored password.
 
 ## Before you start
 
@@ -322,7 +311,7 @@ Once wired up, try asking Claude:
 - *"Show me my Wave businesses."*
 - *"List my draft invoices."*
 - *"Who's my most overdue customer?"*
-- *"Draft an invoice for [customer name]: 6 hours of consulting at $200/hr, dated today."*
+- *"Draft an invoice for \[customer name\]: 6 hours of consulting at $200/hr, dated today."*
 - *"Record a $500 cash payment against invoice #218."*
 
 Claude will figure out which tools to call. If it doesn't have enough info (e.g. you didn't say which customer), it'll ask.
