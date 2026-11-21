@@ -31,7 +31,6 @@ Once it's installed, you can ask Claude to:
 - List your sales taxes (HST, GST and so on), with the tax ids invoices and estimates need
 - Run reports: profit and loss, balance sheet, cash flow, trial balance, sales tax, income by customer, purchases by vendor, account balances, and aged receivables and payables, on an accrual or cash basis
 - Export any of those reports as a CSV or PDF file, the same files Wave's own Export menu produces
-- Answers are trimmed to what matters (names, dates, amounts, statuses and the ids other tools need); ask for the "raw" invoice if you ever need Wave's full record
 
 **Create + edit things**
 - Add, look up, or edit a customer (edits keep the stored address, shipping details and contacts unless you change them)
@@ -43,11 +42,13 @@ Once it's installed, you can ask Claude to:
 - Record, look up, edit or delete bank and cash transactions (money in or out, categorised to an income or expense account), and create tags to label them
 - Draft, edit, approve, send, mark as sent or accepted, duplicate, or delete an estimate, turn one into an invoice, and fetch its PDF as a file
 
+Answers are trimmed to what matters (names, dates, amounts, statuses and the ids other tools need); ask for the "raw" invoice if you ever need Wave's full record.
+
 Everything happens in your real Wave account. Claude doesn't have its own sandbox. Be deliberate with mutating operations, especially deletes and "send invoice", or switch them off entirely with [read-only mode](#read-only-mode).
 
 ## Read-only mode
 
-Start the server with `WAVE_MCP_READ_ONLY=1` and Claude gets only the 24 tools that read: lists, lookups, reports, report exports and PDFs. The 34 tools that mutate data (ie, creating, changing, sending or deleting) are never registered, so they don't appear in the client's tool list and Claude won't be able to call them. That holds however Claude is prompted, including by text it reads along the way: even if a customer note or a pasted email were to attempt prompt injection (although we try to mitigate this danger), the read-only flag is a hard stop that would prevent it from sending an invoice, given that there's no tool to send it with.
+Start the server with `WAVE_MCP_READ_ONLY=1` and Claude gets only the 24 tools that read: lists, lookups, reports, report exports and PDFs. The 34 tools that create, change, send or delete data are never registered, so they don't appear in the client's tool list and Claude can't call them. That holds however Claude is prompted: if a customer note or a pasted email carries a prompt injection, Claude still can't send an invoice, because no tool for sending one exists.
 
 In Claude Desktop, add an `env` block to the `waveapps` entry:
 
@@ -152,7 +153,7 @@ Here's how to get them:
 
 ### Optional: automatic sign-in on expiry
 
-If signing in once a day sounds annoying, you can let the server sign itself back in whenever the session expires. **Read the security caveats first: they're meaningful.**
+If signing in once a day sounds annoying, you can let the server sign itself back in whenever the session expires. **Read the [security trade-offs](#security-trade-offs) below first.**
 
 ```bash
 npx waveapps-mcp save-password
@@ -180,7 +181,7 @@ If Wave shows a visible CAPTCHA, or Cloudflare blocks the browser, automatic sig
 
 > **Upgrading from an older version?** Older versions kept the password and TOTP secret in `credentials.json` in plain text. The first time the server or any CLI command runs, it moves them into the credential store and removes them from the file.
 
-#### ⚠ Security trade-offs
+#### Security trade-offs
 
 - **The credential store is better than a file, not a vault.** It keeps the password out of backups, dotfile sync and accidental commits, but programs running as you can still ask for it.
 - **Storing the TOTP secret defeats 2FA.** Two-factor auth's whole point is that the second factor lives somewhere other than the first factor. With both on one machine, that machine alone can sign in as you. Only do this if your threat model already accepts machine compromise (single-user machine, FileVault/full-disk encryption on, no shared access).
